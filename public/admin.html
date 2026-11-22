@@ -1,93 +1,285 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="color-scheme" content="dark" />
-<title>服务器列表 · 管理</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#ecebe7" />
+<meta name="robots" content="noindex,nofollow" />
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('rl.theme');
+      var t = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) { /* ignore */ }
+  })();
+</script>
+<title>服务器管理 · 卫戍协议：盟约</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2314181a'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%232f9e63'/%3E%3C/svg%3E" />
 <style>
-:root{--bg:#070b09;--panel:#0b110d;--panel2:#0d1310;--line:#1d2a22;--line2:#263a2d;--text:#e8f2ea;--mut:#7f9488;--dim:#5d6f64;--green:#35d07f;--mint:#7bf0b0;--red:#e05a4f;--mono:"Cascadia Mono",Consolas,monospace;--sans:"Microsoft YaHei","Noto Sans SC",system-ui,sans-serif}
+:root{
+  --paper:#ecebe7; --paper2:#f4f3ef; --ink:#14181a; --ink2:#3d474b; --mute:#6b7478;
+  --line:#c9c6bf; --line2:#9d9a93; --green:#2f9e63; --red:#c0392b; --amber:#a9761f;
+  --mono:"Cascadia Mono",Consolas,"SFMono-Regular",monospace;
+  --sans:"Microsoft YaHei","Noto Sans SC","PingFang SC",system-ui,sans-serif;
+}
 *{box-sizing:border-box}
+/* 深色主题（与前台同一套变量） */
+html[data-theme="dark"]{
+  --paper:#17181b; --paper2:#1b1c20; --ink:#e9e7e2; --ink2:#bdbbb5; --mute:#8f8d88;
+  --line:#2d2e33; --line2:#3a3b41; --green:#a6e35a; --red:#e8634f; --amber:#f0b43a;
+}
+html[data-theme="dark"] body{background-image:linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px),
+                   linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px)}
+html[data-theme="dark"] .rl-panel label input,
+html[data-theme="dark"] .rl-editor label input,
+html[data-theme="dark"] .rl-editor label textarea{background:#111214;color:var(--ink)}
+html[data-theme="dark"] .rl-notice{background:#1b2620;color:#b9d9c6}
+html[data-theme="dark"] .rl-notice.err{background:#2a1c1a;color:#e8a49b}
+html[data-theme="dark"] .rl-btn:hover{background:var(--ink);color:var(--paper)}
+html[data-theme="dark"] .rl-rec.is-edit{background:#1b2a22}
+html[data-theme="dark"] .rl-rec:hover{background:rgba(255,255,255,.03)}
 html,body{margin:0;min-height:100%}
-body{color:var(--text);background:var(--bg);font:14px/1.55 var(--sans)}
-body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(900px 520px at 18% -8%,rgba(28,74,52,.45),transparent 62%),linear-gradient(180deg,#0a100c,var(--bg) 60%,#060a08)}
-.shell{position:relative;z-index:1;max-width:1500px;margin:0 auto;padding:24px 24px 40px}
-header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid var(--line)}
-h1{margin:0;font-size:19px;letter-spacing:.05em}
-.eyebrow{font:10px/1 var(--mono);letter-spacing:.22em;color:var(--dim);margin-bottom:7px}
-.sub{color:var(--mut);font:11px/1.4 var(--mono);margin-top:6px}
-.btn{height:31px;padding:0 14px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);color:var(--text);cursor:pointer;font:inherit;font-size:12.5px}
-.btn:hover{border-color:var(--green)}
-.btn--primary{border-color:rgba(53,208,127,.8);background:rgba(53,208,127,.16);color:var(--mint);font-weight:700}
-.btn--danger:hover{border-color:var(--red);color:var(--red)}
-#login{max-width:420px;margin:80px auto;padding:26px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
-#login h2{margin:0 0 6px;font-size:16px}
-#login p{margin:0 0 16px;color:var(--mut);font-size:12.5px}
-input[type=password],input[type=text],textarea,select{width:100%;padding:7px 9px;border-radius:6px;border:1px solid var(--line2);background:#080d0a;color:var(--text);font:12.5px/1.4 var(--sans);outline:none}
-input:focus,textarea:focus{border-color:rgba(53,208,127,.6)}
-table{width:100%;border-collapse:collapse;margin-top:16px;font-size:12.5px;table-layout:auto}
-th,td{padding:7px 8px;border-bottom:1px solid rgba(29,42,34,.85);vertical-align:middle;text-align:left}
-th{font:10.5px/1.2 var(--mono);letter-spacing:.12em;color:var(--dim);white-space:nowrap;font-weight:400}
-tr:hover td{background:rgba(53,208,127,.03)}
-td input,td textarea{background:#060b08}
-td textarea{height:36px;min-height:36px;max-height:36px;resize:none;overflow:auto;line-height:1.35}
-.w-40{width:56px}.w-90{width:90px}.w-140{width:150px}.w-180{width:185px}.w-220{width:225px}
-.acts{display:flex;gap:6px;flex-wrap:nowrap}
-.acts .btn{height:26px;padding:0 9px;font-size:11.5px;white-space:nowrap}
-.state{font:10.5px/1 var(--mono);padding:3px 6px;border-radius:3px;border:1px solid currentColor;white-space:nowrap}
-.state.on{color:var(--green)}.state.off{color:var(--red)}
-.state.offline{color:var(--dim)}
-.hint{color:var(--dim);font-size:11.5px;margin-top:10px}
-.msg{margin-top:10px;font-size:12px;min-height:18px;color:var(--mint)}
-.msg.err{color:var(--red)}
-footer{margin-top:22px;padding-top:12px;border-top:1px solid var(--line);color:var(--dim);font-size:11.5px}
+body{background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans);
+  background-image:linear-gradient(90deg,rgba(0,0,0,.028) 1px,transparent 1px),
+                   linear-gradient(rgba(0,0,0,.028) 1px,transparent 1px);
+  background-size:64px 64px}
+.shell{max-width:1420px;margin:0 auto;padding:0 28px 48px}
+
+/* 顶栏 */
+.rl-top{display:flex;align-items:center;justify-content:space-between;gap:18px;
+  padding:18px 0 14px;border-bottom:2px solid var(--ink)}
+.rl-brand{display:flex;flex-direction:column;text-decoration:none;color:var(--ink)}
+.rl-brand b{font:800 18px/1 var(--sans);letter-spacing:.1em}
+.rl-brand small{font:9px/1 var(--mono);letter-spacing:.26em;color:var(--mute);margin-top:5px}
+.rl-brand span{font:9px/1 var(--mono);letter-spacing:.26em;color:var(--ink2);margin-top:3px}
+.rl-brand span b{font-weight:800;font-size:9px;letter-spacing:.26em}
+.rl-top-actions{display:flex;align-items:center;gap:10px}
+.rl-enter{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink);
+  text-decoration:none;border:1px solid var(--ink);padding:9px 14px;background:var(--paper2)}
+.rl-enter:hover{background:var(--ink);color:var(--paper)}
+.rl-theme{display:inline-flex;align-items:center;gap:6px;font:11px/1 var(--mono);letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink);border:1px solid var(--ink);background:var(--paper2);
+  padding:9px 12px;cursor:pointer}
+.rl-theme:hover{background:var(--ink);color:var(--paper)}
+
+.rl-main{padding-top:18px}
+.rl-code{font:9.5px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--mute)}
+
+/* 提示条 */
+.rl-notice{margin:0 0 14px;padding:10px 14px;border-left:3px solid var(--green);background:#e3efe7;
+  font-size:12.5px;color:var(--ink2)}
+.rl-notice.err{border-left-color:var(--red);background:#f4e3e1;color:#7d2b22}
+.rl-notice.hidden{display:none}
+
+/* 登录 */
+.rl-login{display:grid;grid-template-columns:180px minmax(0,1fr);gap:0;max-width:760px;margin:56px auto 0;
+  border:1px solid var(--ink);background:var(--paper2)}
+.rl-login.hidden{display:none}
+.rl-section-tile{background:var(--ink);color:var(--paper);padding:18px 16px;display:flex;flex-direction:column;gap:8px}
+.rl-section-tile small{font:8.5px/1 var(--mono);letter-spacing:.24em;opacity:.65}
+.rl-section-tile strong{font:800 30px/0.98 var(--sans);letter-spacing:.02em}
+.rl-section-tile em{font:8px/1.4 var(--mono);letter-spacing:.16em;font-style:normal;opacity:.6;margin-top:auto}
+.rl-panel{padding:22px 24px;border:1px solid var(--line);background:var(--paper2)}
+.rl-login .rl-panel{border:0}
+.rl-panel h1,.rl-panel h2{margin:8px 0 4px;font-size:22px;font-weight:800;letter-spacing:.02em}
+.rl-muted{color:var(--mute);font-size:12.5px;margin:0 0 16px}
+.rl-panel label,.rl-editor label{display:block;margin-top:12px;font-size:12px;color:var(--ink2)}
+.rl-panel label input,.rl-editor label input,.rl-editor label textarea,
+.rl-panel label select,.rl-editor label select{display:block;width:100%;margin-top:5px;padding:9px 10px;
+  border:1px solid var(--line2);background:#fff;color:var(--ink);font:13px/1.4 var(--sans);outline:none}
+.rl-panel label input:focus,.rl-editor label input:focus,.rl-editor label textarea:focus{border-color:var(--ink);box-shadow:0 0 0 2px rgba(20,24,26,.08)}
+.rl-panel label small,.rl-editor label small{display:block;margin-top:5px;font-size:10.5px;color:var(--mute)}
+
+.rl-btn{height:34px;padding:0 15px;border:1px solid var(--ink);background:var(--paper2);color:var(--ink);
+  font:12.5px/1 var(--sans);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.rl-btn:hover{background:var(--ink);color:var(--paper)}
+.rl-btn.rl-join{background:var(--ink);color:var(--paper);font-weight:700;border-color:var(--ink)}
+.rl-btn.rl-join:hover{background:var(--green);border-color:var(--green)}
+.rl-btn.rl-danger{border-color:#b7b3ab;color:#8a3a30}
+.rl-btn.rl-danger:hover{background:var(--red);border-color:var(--red);color:#fff}
+.rl-btn[disabled]{opacity:.45;cursor:default}
+
+/* 标题行 */
+.rl-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+  padding-bottom:12px;border-bottom:2px solid var(--ink);margin-bottom:16px;flex-wrap:wrap}
+.rl-head h2{margin:6px 0 0;font-size:26px;font-weight:800;letter-spacing:.02em}
+.rl-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* 两栏 */
+.rl-admin-grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:24px;align-items:start}
+.rl-records{border-top:1px solid var(--line2)}
+.rl-rec{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:12px;align-items:center;
+  padding:11px 2px;border-bottom:1px solid var(--line)}
+.rl-rec:hover{background:rgba(0,0,0,.03)}
+.rl-rec.is-edit{background:#e3efe7;box-shadow:inset 3px 0 0 var(--green)}
+.rl-rec-tile{background:var(--ink);color:var(--paper);font:800 18px/1 var(--mono);
+  display:flex;align-items:center;justify-content:center;height:40px}
+.rl-rec-info{min-width:0}
+.rl-rec-info strong{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}
+.rl-rec-info small{display:block;margin-top:2px;font-size:11.5px;color:var(--mute);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rl-rec-actions{display:flex;gap:6px}
+.rl-rec-actions .rl-btn{height:28px;padding:0 10px;font-size:11.5px}
+
+/* 状态小标 */
+.rl-tag{font:9px/1 var(--mono);letter-spacing:.12em;padding:3px 5px;border:1px solid currentColor;text-transform:uppercase}
+.rl-tag.on{color:var(--green)}
+.rl-tag.off{color:var(--red)}
+.rl-tag.off2{color:var(--mute)}
+
+.rl-editor{border:1px solid var(--ink);background:var(--paper2);padding:18px 20px 20px;position:sticky;top:16px}
+.rl-editor h2{margin:6px 0 2px;font-size:20px}
+.rl-form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.rl-editor .rl-actions{margin-top:16px}
+.rl-editor .rl-actions .rl-btn{flex:1 1 0;height:38px}
+.rl-check{display:flex!important;align-items:center;gap:8px;margin-top:14px;font-size:12px;color:var(--ink2)}
+.rl-editor label.rl-check input{width:auto;margin:0;display:inline-block;accent-color:var(--green)}
+.rl-editor label.rl-check span{font-size:12px;color:var(--ink2)}
+
+.rl-password{margin-top:18px;border:1px solid var(--line);background:var(--paper2);padding:0}
+.rl-password summary{padding:11px 16px;cursor:pointer;font:11px/1 var(--mono);letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink2);list-style:none}
+.rl-password summary::-webkit-details-marker{display:none}
+.rl-password summary::before{content:"＋ ";font-weight:700}
+.rl-password[open] summary::before{content:"－ "}
+.rl-password form{padding:0 16px 16px}
+
+.rl-footer{margin-top:26px;padding-top:12px;border-top:1px solid var(--line2);
+  display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--mute)}
+
+@media (max-width:1100px){
+  .rl-admin-grid{grid-template-columns:minmax(0,1fr)}
+  .rl-editor{position:static;order:-1}
+}
+@media (max-width:700px){
+  .shell{padding:0 14px 32px}
+  .rl-top{padding:14px 0 12px}
+  .rl-brand b{font-size:16px}
+  .rl-head h2{font-size:21px}
+  .rl-rec{grid-template-columns:44px minmax(0,1fr);row-gap:8px}
+  .rl-rec-actions{grid-column:2}
+  .rl-rec-tile{height:36px;font-size:16px}
+  .rl-form-row{grid-template-columns:1fr}
+  .rl-login{grid-template-columns:1fr;margin-top:24px}
+  .rl-section-tile{flex-direction:row;align-items:baseline;gap:12px;padding:12px 16px}
+  .rl-section-tile strong{font-size:18px}
+  .rl-btn{height:38px}
+}
 </style>
 </head>
 <body>
 <div class="shell">
-  <header>
-    <div>
-      <div class="eyebrow">STRONGHOLD LIST · ADMIN</div>
-      <h1>服务器列表 · 管理</h1>
-      <div class="sub">改动直接写回 servers.json 并立即重新探测</div>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn" id="btnDeploy" title="服务器上执行 git pull，代码有变化时自动重启">更新到最新版</button>
-      <button class="btn" id="btnReload">刷新状态</button>
-      <button class="btn btn--primary" id="btnNew">＋ 新增服务器</button>
+  <header class="rl-top">
+    <a class="rl-brand" href="/"><b>STRONGHOLD</b><small>SERVER DIRECTORY</small><span>ADMIN <b>OS</b></span></a>
+    <div class="rl-top-actions">
+      <button type="button" class="rl-theme" id="themeBtn" aria-pressed="false"><span id="themeText">夜间</span></button>
+      <a class="rl-enter" href="/">← 返回列表</a>
     </div>
   </header>
 
-  <section id="login" hidden>
-    <h2>需要口令</h2>
-    <p>口令来自环境变量 <code>ADMIN_PASSWORD</code>（没设置时会随机生成并打印在启动日志里）。</p>
-    <input type="password" id="pw" placeholder="管理口令" autocomplete="current-password" />
-    <div style="margin-top:12px"><button class="btn btn--primary" id="btnLogin">登录</button></div>
-    <div class="msg err" id="loginMsg"></div>
-  </section>
+  <main class="rl-main">
+    <div id="message" class="rl-notice hidden" role="status"></div>
 
-  <main id="main" hidden>
-    <div class="msg" id="msg"></div>
-    <div style="overflow:auto">
-      <table>
-        <thead><tr>
-          <th class="w-40">序</th><th class="w-180">名称</th><th class="w-140">地区</th><th class="w-120">维护者</th>
-          <th class="w-220">入口地址</th><th class="w-120">状态路径</th><th class="w-180">标签（逗号分隔）</th>
-          <th>备注</th><th class="w-90">状态</th><th class="w-140">操作</th>
-        </tr></thead>
-        <tbody id="rows"></tbody>
-      </table>
-    </div>
-    <div class="hint">提示：改完点该行「保存」；「下架」只是把 <code>enabled</code> 设为 false（保留配置）；删除不可恢复。</div>
+    <section id="login-panel" class="rl-login hidden">
+      <div class="rl-section-tile" aria-hidden="true">
+        <small>SECTION</small><strong>ADM<br />CTRL</strong><em>CONTROL CENTER SECTION</em>
+      </div>
+      <div class="rl-panel">
+        <span class="rl-code">CONTROL CENTER / ACCESS PERMISSION REQUIRED</span>
+        <h1>登录后台</h1>
+        <p class="rl-muted">维护服务器信息，添加节点与更新玩法说明。</p>
+        <form id="login-form">
+          <label>账号<input name="username" autocomplete="username" value="admin" readonly /></label>
+          <label>密码<input name="password" type="password" autocomplete="current-password" required /></label>
+          <div class="rl-actions" style="margin-top:16px">
+            <button class="rl-btn rl-join" type="submit" style="flex:1 1 auto">登录 →</button>
+          </div>
+        </form>
+        <p class="rl-muted" style="margin:14px 0 0;font-size:11px">口令由服务端 <code>ADMIN_PASSWORD</code> 控制</p>
+      </div>
+    </section>
+
+    <section id="dashboard" class="hidden">
+      <div class="rl-head">
+        <div><span class="rl-code">CONTROL CENTER / 配置即时保存</span><h2>管理服务器</h2></div>
+        <div class="rl-actions">
+          <button id="add" class="rl-btn rl-join" type="button">＋ 添加服务器</button>
+          <button id="refresh" class="rl-btn" type="button">刷新状态</button>
+          <button id="deploy" class="rl-btn" type="button" title="服务器上执行 git pull">更新到最新版</button>
+          <button id="logout" class="rl-btn" type="button">退出登录</button>
+        </div>
+      </div>
+
+      <div class="rl-admin-grid">
+        <div>
+          <div id="records" class="rl-records"></div>
+          <details class="rl-password">
+            <summary>修改后台密码</summary>
+            <form id="password-form">
+              <label>当前密码<input name="current" type="password" required /></label>
+              <label>新密码<input name="password" type="password" minlength="8" required /></label>
+              <div class="rl-actions" style="margin-top:14px">
+                <button class="rl-btn" type="submit" disabled>修改并重新登录（暂未接入）</button>
+              </div>
+              <p class="rl-muted" style="margin:10px 0 0;font-size:11px">
+                口令在服务端 <code>ADMIN_PASSWORD</code> 里配置，改完需 <code>systemctl restart stronghold-list</code>。
+              </p>
+            </form>
+          </details>
+        </div>
+
+        <section class="rl-panel rl-editor">
+          <span class="rl-code">NODE CONFIGURATION</span>
+          <h2 id="editor-title">添加服务器</h2>
+          <p class="rl-muted" id="editor-hint">填名称和游戏地址即可，其余可留空</p>
+          <form id="editor-form">
+            <div class="rl-form-row">
+              <label>服务器名称<input name="title" maxlength="60" placeholder="例如：六服" required /></label>
+              <label>地区<input name="region" maxlength="80" placeholder="例如：上海" /></label>
+            </div>
+            <label>维护者<input name="maintainer" maxlength="80" placeholder="例如：Wisadel" /></label>
+            <label>游戏地址<input name="url" type="url" placeholder="https://example.com 或 http://1.2.3.4:3000" required /></label>
+            <div class="rl-form-row">
+              <label>版本说明<input name="version" maxlength="40" placeholder="0.2.1（可留空，自动读）" /></label>
+              <label>排序（数字越小越靠前）<input name="order" type="number" min="0" max="9999" value="99" required /></label>
+            </div>
+            <label>特色标签（用逗号分隔）<input name="tags" placeholder="无限火力, 炸惊模拟" /></label>
+            <label>玩法 / 维护说明<textarea name="notes" rows="4" maxlength="1000" placeholder="一两句话介绍这个服"></textarea></label>
+            <label>人数状态接口路径<input name="statusPath" value="/healthz" maxlength="150" required />
+              <small>需要返回 JSON，默认读取 online；旧版本读取 sockets。</small></label>
+            <label class="rl-check"><input name="enabled" type="checkbox" checked /><span>前台展示（关掉 = 下架，配置保留）</span></label>
+            <div class="rl-actions">
+              <button class="rl-btn rl-join" type="submit">保存服务器</button>
+              <button id="reset" class="rl-btn" type="button">清空 / 新建</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </section>
   </main>
 
-  <footer>每 30 秒自动探测一次 · 页面上的「状态」是最近一次探测结果</footer>
+  <footer class="rl-footer">
+    <span>卫戍协议：盟约 · 社区服务器导航 · 管理员后台</span>
+    <span>POWERED BY <b>COMMUNITY</b> —</span>
+  </footer>
 </div>
 
 <script>
-const $ = (id) => document.getElementById(id);
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-let dirty = false;
+let items = [];
+let editing = '';
+
+function msg(text, err) {
+  const el = $('#message');
+  if (!text) { el.className = 'rl-notice hidden'; el.textContent = ''; return; }
+  el.textContent = text;
+  el.className = 'rl-notice' + (err ? ' err' : '');
+}
+function showLogin() { $('#login-panel').classList.remove('hidden'); $('#dashboard').classList.add('hidden'); }
+function showDash() { $('#login-panel').classList.add('hidden'); $('#dashboard').classList.remove('hidden'); }
 
 async function api(path, body) {
   const opt = body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) };
@@ -98,127 +290,143 @@ async function api(path, body) {
   return j;
 }
 
-function showLogin() { $('login').hidden = false; $('main').hidden = true; }
-function showMain() { $('login').hidden = true; $('main').hidden = false; }
-
-function say(text, err) {
-  const el = $('msg');
-  el.textContent = text || '';
-  el.className = 'msg' + (err ? ' err' : '');
+function renderRecords() {
+  const box = $('#records');
+  if (!items.length) { box.innerHTML = '<p class="rl-muted" style="padding:14px 0">还没有收录任何服务器，点右上「＋ 添加服务器」</p>'; return; }
+  box.innerHTML = items.map((s, i) => {
+    const on = (s.status || {}).state === 'online';
+    const off = s.enabled === false;
+    const tag = off ? '<span class="rl-tag off2">下架</span>'
+      : (on ? '<span class="rl-tag on">在线</span>' : '<span class="rl-tag off">离线</span>');
+    return '<article class="rl-rec' + (s.id === editing ? ' is-edit' : '') + '" data-id="' + esc(s.id) + '">' +
+      '<div class="rl-rec-tile">' + String(i + 1).padStart(2, '0') + '</div>' +
+      '<div class="rl-rec-info"><strong>' + esc(s.title) + (s.region ? ' · ' + esc(s.region) : '') + tag + '</strong>' +
+        '<small>' + esc([s.maintainer, s.url].filter(Boolean).join(' / ')) + '</small></div>' +
+      '<div class="rl-rec-actions">' +
+        '<button class="rl-btn" data-act="edit" type="button">编辑</button>' +
+        '<button class="rl-btn" data-act="toggle" type="button">' + (off ? '上架' : '下架') + '</button>' +
+        '<button class="rl-btn rl-danger" data-act="del" type="button">删除</button>' +
+      '</div>' +
+    '</article>';
+  }).join('');
 }
 
-function rowHtml(s) {
-  const st = s.status || {};
-  const on = st.state === 'online';
-  const stateText = on ? '在线' : (st.state === 'unreachable' ? '不可达' : '离线');
-  return '<tr data-id="' + esc(s.id) + '">' +
-    '<td><input type="text" class="w-40" data-k="order" value="' + esc(s.order) + '" /></td>' +
-    '<td><input type="text" data-k="title" value="' + esc(s.title) + '" /></td>' +
-    '<td><input type="text" data-k="region" value="' + esc(s.region) + '" /></td>' +
-    '<td><input type="text" data-k="maintainer" value="' + esc(s.maintainer) + '" /></td>' +
-    '<td><input type="text" data-k="url" value="' + esc(s.url) + '" /></td>' +
-    '<td><input type="text" data-k="statusPath" value="' + esc(s.statusPath) + '" /></td>' +
-    '<td><input type="text" data-k="tags" value="' + esc((s.tags || []).join('、')) + '" /></td>' +
-    '<td><textarea data-k="notes">' + esc(s.notes) + '</textarea></td>' +
-    '<td><span class="state ' + (on ? 'on' : (st.state === 'unreachable' ? 'offline' : 'off')) + '">' + stateText + '</span></td>' +
-    '<td><div class="acts">' +
-      '<button class="btn" data-act="save">保存</button>' +
-      '<button class="btn" data-act="toggle">' + (s.enabled === false ? '上架' : '下架') + '</button>' +
-      '<button class="btn btn--danger" data-act="del">删除</button>' +
-    '</div></td>' +
-  '</tr>';
+function fillForm(s) {
+  editing = s ? s.id : '';
+  $('#editor-title').textContent = s ? ('编辑：' + s.title) : '添加服务器';
+  $('#editor-hint').textContent = s ? ('ID ' + s.id) : '填名称和游戏地址即可，其余可留空';
+  const f = $('#editor-form');
+  f.title.value = s ? (s.title || '') : '';
+  f.region.value = s ? (s.region || '') : '';
+  f.maintainer.value = s ? (s.maintainer || '') : '';
+  f.url.value = s ? (s.url || '') : '';
+  f.version.value = s ? (s.version || '') : '';
+  f.order.value = s ? (s.order ?? 99) : 99;
+  f.tags.value = s ? (s.tags || []).join('、') : '';
+  f.notes.value = s ? (s.notes || '') : '';
+  f.statusPath.value = s ? (s.statusPath || '/healthz') : '/healthz';
+  f.enabled.checked = s ? s.enabled !== false : true;
+  renderRecords();
 }
 
 async function load() {
   const j = await api('/admin/api/list');
-  const list = (j.servers || []).slice().sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
-  $('rows').innerHTML = list.map(rowHtml).join('') || '<tr><td colspan="10" class="hint">还没有收录任何服务器，点右上角「新增服务器」</td></tr>';
-  showMain();
-  say('已载入 ' + list.length + ' 条');
+  items = (j.servers || []).slice().sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
+  renderRecords();
+  showDash();
+  msg('已载入 ' + items.length + ' 条 · 在线 ' + items.filter((s) => (s.status || {}).state === 'online').length);
 }
 
-function readRow(tr, id) {
-  const get = (k) => tr.querySelector('[data-k="' + k + '"]').value;
-  return {
-    id,
-    order: Number(get('order')) || 99,
-    title: get('title'), region: get('region'), maintainer: get('maintainer'),
-    url: get('url'), statusPath: get('statusPath'), tags: get('tags'), notes: get('notes'),
-  };
-}
-
-$('btnLogin').onclick = async () => {
+$('#login-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const pw = ev.target.password.value;   // 先取出来，再作为短变量传
   try {
-    await api('/admin/login', { password: $('pw').value });
-    $('loginMsg').textContent = '';
+    await api('/admin/login', { password: pw });
+    msg('');
     await load();
-  } catch (e) { $('loginMsg').textContent = e.message; }
-};
-$('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnLogin').click(); });
-
-$('btnReload').onclick = () => load().catch((e) => say(e.message, true));
-
-$('btnDeploy').onclick = async () => {
-  if (!confirm('在服务器上执行 git pull？如果 server.mjs 有变化会自动重启服务（约 3 秒）。')) return;
-  const btn = $('btnDeploy');
-  btn.disabled = true;
-  btn.textContent = '更新中…';
-  try {
-    const r = await api('/admin/api/deploy', {});
-    const files = (r.changed || []).join('、') || '（无变化）';
-    say(`更新完成 ${r.before || '?'} → ${r.after || '?'} · 变更：${files}${r.restarted ? ' · 服务重启中…' : ''}`);
-    if (r.restarted) setTimeout(() => location.reload(), 5000);
-    else await load();
-  } catch (e) {
-    say('更新失败：' + e.message, true);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '更新到最新版';
-  }
-};
-
-$('btnNew').onclick = async () => {
-  const name = prompt('新服务器名称（例如：十五服）');
-  if (!name) return;
-  const url = prompt('入口地址（http:// 或 https:// 开头）');
-  if (!url) return;
-  try {
-    const r = await api('/admin/api/save', { title: name, url, statusPath: '/healthz', order: 99 });
-    await load();
-    say('已新增 ' + name + '（id ' + r.id + '）');
-  } catch (e) { say('新增失败：' + e.message, true); }
-};
-
-$('rows').addEventListener('click', async (ev) => {
-  const btn = ev.target.closest('button[data-act]');
-  if (!btn) return;
-  const tr = btn.closest('tr');
-  const id = tr.getAttribute('data-id');
-  const act = btn.getAttribute('data-act');
-  try {
-    if (act === 'save') {
-      const row = readRow(tr, id);
-      await api('/admin/api/save', row);
-      say('已保存 ' + row.title + '，正在重新探测…');
-      setTimeout(() => load().catch(() => {}), 2500);
-    } else if (act === 'toggle') {
-      const enabling = btn.textContent.trim() === '上架';
-      await api('/admin/api/toggle', { id, enabled: enabling });
-      await load();
-      say(enabling ? '已上架' : '已下架（配置保留）');
-    } else if (act === 'del') {
-      if (!confirm('删除这条？不可恢复（可用「下架」代替）。')) return;
-      await api('/admin/api/delete', { id });
-      await load();
-      say('已删除');
-    }
-  } catch (e) { say(e.message, true); }
+  } catch (e) { msg(e.message, true); }
 });
 
-$('rows').addEventListener('input', () => { dirty = true; });
-window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+$('#add').onclick = () => { fillForm(null); $('#editor-form').title.focus(); };
+$('#reset').onclick = () => { fillForm(null); msg('已清空表单'); };
+$('#refresh').onclick = () => load().catch((e) => msg(e.message, true));
+$('#logout').onclick = () => location.reload();
+
+$('#editor-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const f = ev.target;
+  const body = {
+    id: editing || undefined,
+    title: f.title.value.trim(), region: f.region.value.trim(), maintainer: f.maintainer.value.trim(),
+    url: f.url.value.trim(), version: f.version.value.trim(),
+    order: Number(f.order.value) || 99, tags: f.tags.value, notes: f.notes.value.trim(),
+    statusPath: f.statusPath.value.trim() || '/healthz', enabled: f.enabled.checked,
+  };
+  if (!body.url) { msg('游戏地址不能为空', true); return; }
+  try {
+    await api('/admin/api/save', body);
+    msg((editing ? '已保存改动' : '已新增') + '：' + (body.title || body.url) + '，正在重新探测…');
+    fillForm(null);
+    setTimeout(() => load().catch(() => {}), 2200);
+  } catch (e) { msg('保存失败：' + e.message, true); }
+});
+
+$('#records').addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('button[data-act]');
+  if (!btn) return;
+  const row = btn.closest('[data-id]');
+  const id = row.getAttribute('data-id');
+  const s = items.find((x) => x.id === id);
+  const act = btn.getAttribute('data-act');
+  try {
+    if (act === 'edit') { fillForm(s); $('#editor-form').title.focus(); return; }
+    if (act === 'toggle') {
+      await api('/admin/api/toggle', { id, enabled: s.enabled === false });
+      await load(); msg(s.enabled === false ? '已上架' : '已下架（配置保留）'); return;
+    }
+    if (act === 'del') {
+      if (!confirm('删除「' + (s ? s.title : id) + '」？不可恢复（可用「下架」代替）。')) return;
+      await api('/admin/api/delete', { id });
+      if (editing === id) fillForm(null);
+      await load(); msg('已删除');
+    }
+  } catch (e) { msg(e.message, true); }
+});
+
+$('#deploy').onclick = async () => {
+  if (!confirm('在服务器上执行 git pull？server.mjs 有变化会自动重启（约 3 秒）。')) return;
+  const btn = $('#deploy');
+  btn.disabled = true; btn.textContent = '更新中…';
+  try {
+    const r = await api('/admin/api/deploy', {});
+    msg('更新完成 ' + (r.before || '?') + ' → ' + (r.after || '?') + ' · 变更：' + ((r.changed || []).join('、') || '（无变化）') + (r.restarted ? ' · 服务重启中' : ''));
+    if (r.restarted) setTimeout(() => location.reload(), 5000);
+  } catch (e) { msg('更新失败：' + e.message, true); }
+  finally { btn.disabled = false; btn.textContent = '更新到最新版'; }
+};
 
 load().catch(() => showLogin());
+
+// 明暗切换
+function paintTheme() {
+  const t = document.documentElement.getAttribute('data-theme') || 'light';
+  const btn = document.getElementById('themeBtn');
+  const txt = document.getElementById('themeText');
+  if (txt) txt.textContent = t === 'dark' ? '日间' : '夜间';
+  if (btn) btn.setAttribute('aria-pressed', t === 'dark' ? 'true' : 'false');
+  const meta = document.querySelector('meta[name=theme-color]');
+  if (meta) meta.setAttribute('content', t === 'dark' ? '#101113' : '#ecebe7');
+}
+const themeBtn = document.getElementById('themeBtn');
+if (themeBtn) {
+  themeBtn.onclick = () => {
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('rl.theme', next); } catch { /* ignore */ }
+    paintTheme();
+  };
+}
+paintTheme();
 </script>
 </body>
 </html>
