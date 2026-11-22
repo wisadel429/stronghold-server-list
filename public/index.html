@@ -32,6 +32,13 @@ h1{margin:0;font-size:22px;letter-spacing:.06em;font-weight:800}
 .eyebrow{font:10px/1 var(--mono);letter-spacing:.22em;color:var(--dim);margin-bottom:8px}
 .sub{color:var(--mut);font-size:11.5px;letter-spacing:.16em;font-family:var(--mono);margin-top:6px}
 .stats{display:flex;gap:18px;flex-wrap:wrap}
+/* 后台入口：克制一点，平时只是灰色小字，hover 才亮（业主 2026-11-22） */
+.hdr-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.admin-link{align-self:flex-end;font:10.5px/1 var(--mono);letter-spacing:.1em;color:var(--dim);
+  text-decoration:none;padding:4px 8px;border:1px solid transparent;border-radius:6px;
+  opacity:.55;transition:opacity .15s,color .15s,border-color .15s}
+.admin-link:hover,.admin-link:focus-visible{opacity:1;color:var(--mint);border-color:var(--line2);
+  background:rgba(53,208,127,.06);outline:none}
 .stat{min-width:78px}
 .stat b{display:block;font:700 20px/1.1 var(--mono);color:var(--mint)}
 .stat span{display:block;font-size:10.5px;letter-spacing:.16em;color:var(--dim);margin-top:4px}
@@ -117,6 +124,8 @@ footer b{color:var(--mut);font-weight:400}
   .sub{font-size:10.5px;letter-spacing:.1em;margin-top:4px}
   /* 四个统计挤到一行会换行难看：改成等分的 4 格，数字缩小但更整齐 */
   .stats{gap:6px;width:100%;display:grid;grid-template-columns:repeat(4,1fr);margin-top:2px}
+  .hdr-right{width:100%;align-items:stretch;gap:4px}
+  .admin-link{align-self:flex-end;opacity:.6;padding:2px 6px}
   .stat{min-width:0}
   .stat b{font-size:17px}
   .stat span{font-size:9px;letter-spacing:.08em;margin-top:2px;white-space:nowrap}
@@ -163,11 +172,15 @@ footer b{color:var(--mut);font-weight:400}
       <h1>卫戍协议 · 服务器列表</h1>
       <div class="sub">SERVER STATUS · 每 <span id="pollSec">30</span> 秒自动刷新</div>
     </div>
-    <div class="stats">
-      <div class="stat"><b id="sOnline">–</b><span>在线服</span></div>
-      <div class="stat"><b id="sTotal">–</b><span>收录总数</span></div>
-      <div class="stat"><b id="sPlayers">–</b><span>在线玩家</span></div>
-      <div class="stat"><b id="sRooms">–</b><span>房间</span></div>
+    <div class="hdr-right">
+      <!-- 业主 2026-11-22：一个不显眼的后台入口 -->
+      <a class="admin-link" href="/admin" title="管理后台（需要口令）">⚙ 后台</a>
+      <div class="stats">
+        <div class="stat"><b id="sOnline">–</b><span>在线服</span></div>
+        <div class="stat"><b id="sTotal">–</b><span>收录总数</span></div>
+        <div class="stat"><b id="sPlayers">–</b><span>在线玩家</span></div>
+        <div class="stat"><b id="sRooms">–</b><span>房间</span></div>
+      </div>
     </div>
   </header>
 
