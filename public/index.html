@@ -198,7 +198,13 @@ function sparkline(points) {
 function uptimeText(v) { return v == null ? '—' : v.toFixed(1) + '%'; }
 
 function render() {
-  const list = state.items.filter((s) => {
+  // 业主 2026-11-22：保持原来的 order 顺序，但**连接失败的置底**（同组内仍是原顺序，sort 是稳定的）
+  const ordered = state.items.slice().sort((a, b) => {
+    const ao = (a.status || {}).state === 'online' ? 0 : 1;
+    const bo = (b.status || {}).state === 'online' ? 0 : 1;
+    return ao - bo;
+  });
+  const list = ordered.filter((s) => {
     const st = s.status || {};
     const online = st.state === 'online';
     if (state.filter === 'online' && !online) return false;
