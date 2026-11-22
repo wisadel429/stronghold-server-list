@@ -195,13 +195,14 @@ html.rl-booting{overflow:hidden}
 .rl-section-tile::after{content:"";position:absolute;right:-7px;top:-7px;width:12px;height:12px;background:var(--orange)}
 .rl-sats{position:absolute;inset:0}
 .rl-sat{position:absolute;left:var(--x);top:var(--y);translate:-50% -50%;z-index:1;
-  width:58px;height:58px;padding:0;border:0;background:var(--block);color:var(--on-block);
+  width:66px;height:66px;padding:0;border:0;background:var(--block);color:var(--on-block);
   cursor:pointer;font-family:var(--code);transition:scale .2s,box-shadow .2s}
 .rl-sat.light{background:var(--paper);color:var(--ink);border:1px solid var(--ink)}
-.rl-sat-in{display:grid;place-content:center;height:100%;animation:rl-bob 5s ease-in-out infinite;
+.rl-sat-in{display:grid;place-content:center;gap:2px;height:100%;animation:rl-bob 5s ease-in-out infinite;
   animation-delay:calc(var(--k,0) * -.7s)}
 .rl-sat strong{font-size:20px;line-height:1;font-weight:900}
-.rl-sat small{font-size:9px;max-width:52px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;opacity:.75}
+.rl-sat small{font-size:11.5px;line-height:1.1;max-width:62px;overflow:hidden;white-space:nowrap;
+  text-overflow:ellipsis;opacity:.82;letter-spacing:.01em}
 .rl-sat::after{content:"";position:absolute;right:3px;top:3px;width:6px;height:6px;background:var(--sub)}
 .rl-sat.is-online::after{background:var(--lime)}
 .rl-sat.is-offline::after{background:var(--red)}
@@ -244,6 +245,31 @@ body.rl-ready .rl-wipe.in-hero>span{animation:rl-wipe-text .8s backwards;animati
   .rl-sat strong{font-size:16px}
   .rl-section-tile{width:130px;padding:10px 12px 9px}
   .rl-deco{display:none}
+}
+
+/* ── 感谢名单（横向滚动，鼠标悬停暂停）── */
+.rl-thanks{margin-top:clamp(20px,3vw,34px);padding:14px 0 0;border-top:1px solid var(--line);position:relative}
+.rl-thanks-code{margin:0 0 10px}
+.rl-thanks-rail{position:relative;overflow:hidden;padding:10px 0;
+  mask-image:linear-gradient(90deg,transparent 0,#000 6%,#000 94%,transparent 100%)}
+.rl-thanks-rail::before,.rl-thanks-rail::after{content:"";position:absolute;top:0;bottom:0;width:1px;background:var(--line);z-index:2}
+.rl-thanks-rail::before{left:0}
+.rl-thanks-rail::after{right:0}
+.rl-thanks-wrap{display:flex;width:max-content;animation:rl-roll var(--roll-dur,60s) linear infinite;will-change:transform}
+.rl-thanks-wrap:hover{animation-play-state:paused}
+.rl-thanks-track{display:flex}
+@keyframes rl-roll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.rl-tk{display:inline-flex;align-items:baseline;gap:8px;padding:6px 18px;border-right:1px solid var(--line);white-space:nowrap}
+.rl-tk-name{font:700 15px/1 var(--code);letter-spacing:.03em;color:var(--ink)}
+.rl-tk-role{font-size:11px;color:var(--sub)}
+.rl-tk-role:empty{display:none}
+.rl-tk-prefix{color:var(--lime);font:700 13px var(--code)}
+.rl-tk-heart{color:var(--orange);font-size:12px}
+.rl-tk-dedicated{border-left:1px solid var(--line);border-right:1px solid var(--line);background:var(--paper);padding:6px 18px}
+.rl-tk-dedicated .rl-tk-name{color:var(--orange)}
+@media (prefers-reduced-motion: reduce){
+  .rl-thanks-wrap{animation:none;transform:none;flex-wrap:wrap;width:auto}
+  .rl-thanks-rail{overflow:visible;mask-image:none}
 }
 
 /* 列表：行用参考站的卡片式白底 + 悬停位移 + 橙色角标 */
@@ -470,6 +496,11 @@ dialog.rl-dialog::backdrop{background:rgba(20,24,26,.42)}
   </div>
 
   <div class="rl-list" id="grid"><div class="rl-empty">正在读取…</div></div>
+
+  <section class="rl-thanks" id="thanks" aria-label="感谢名单">
+    <div class="rl-thanks-code rl-code" aria-hidden="true">02 / THANKS ROLL</div>
+    <div class="rl-thanks-rail" id="thanksRail" aria-live="off"></div>
+  </section>
 
   <footer class="rl-footer">
     <span>数据来自各服 <b>/healthz</b> · 24 小时分段 = 每 30 分钟一格 · 更新于 <b id="updated">–</b></span>
@@ -859,7 +890,79 @@ $('dlgClose').onclick = () => $('dlg').close();
 $('dlg').addEventListener('click', (ev) => { if (ev.target === $('dlg')) $('dlg').close(); });
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && $('dlg').open) $('dlg').close(); });
 
-/* ── 进场 boot 序列（照抄参考站时间轴，可点击/按键跳过）── */
+/* ── 感谢名单：先读本地副本（首屏零等待），再静默对齐上游版本 ── */
+const THANKS_URL = 'https://ganxiemingdan.jiangjiangze.icu/api/thanks';
+
+function thanksItem(n, prefix) {
+  const item = document.createElement('span');
+  item.className = 'rl-tk';
+  if (prefix) {
+    const p = document.createElement('span');
+    p.className = 'rl-tk-prefix';
+    p.textContent = prefix;
+    item.append(p);
+  }
+  const name = document.createElement('strong');
+  name.className = 'rl-tk-name';
+  name.textContent = n.name;
+  item.append(name);
+  if (n.role) {
+    const role = document.createElement('small');
+    role.className = 'rl-tk-role';
+    role.textContent = n.role;
+    item.append(role);
+  }
+  return item;
+}
+
+function paintThanks(data) {
+  const rail = $('thanksRail');
+  if (!rail) return;
+  const prefix = data.prefix || '';
+  const build = () => {
+    const half = document.createElement('div');
+    half.className = 'rl-thanks-track';
+    for (const n of data.names || []) half.append(thanksItem(n, prefix));
+    if (data.dedication && data.dedication.name) {
+      const d = thanksItem(data.dedication, prefix);
+      d.classList.add('rl-tk-dedicated');
+      const heart = document.createElement('span');
+      heart.className = 'rl-tk-heart';
+      heart.textContent = '♥';
+      d.prepend(heart);
+      half.append(d);
+    }
+    return half;
+  };
+  const count = (data.names || []).length + (data.dedication && data.dedication.name ? 1 : 0);
+  if (!count) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'rl-thanks-wrap';
+  wrap.append(build(), build());     // 两份首尾相接，translateX(-50%) 即无缝
+  wrap.style.setProperty('--roll-dur', Math.min(180, 60 + Math.round(count / 12) * 6) + 's');
+  rail.replaceChildren(wrap);
+  rail.setAttribute('aria-label', '感谢名单（' + count + ' 位）');
+}
+
+async function loadThanks() {
+  if (!$('thanksRail')) return;
+  let data = null;
+  try { data = await (await fetch('/data/thanks.json', { cache: 'force-cache' })).json(); } catch { /* ignore */ }
+  if (!data || !Array.isArray(data.names) || !data.names.length) {
+    // 本地没有就直接取上游
+    try { data = await (await fetch(THANKS_URL, { cache: 'no-store', signal: AbortSignal.timeout(10000) })).json(); } catch { return; }
+  }
+  if (!data || !Array.isArray(data.names)) return;
+  paintThanks(data);
+  // 静默对齐上游：只有版本变了才重画
+  try {
+    const remote = await (await fetch(THANKS_URL, { cache: 'no-store', signal: AbortSignal.timeout(10000) })).json();
+    if (remote && Array.isArray(remote.names) && remote.names.length && remote.v !== data.v) paintThanks(remote);
+  } catch { /* ignore */ }
+}
+
+loadThanks();
+
 const boot = $('boot');
 let bootTimers = [];
 let booting = false;
