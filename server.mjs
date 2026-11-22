@@ -26,6 +26,7 @@ const TIMEOUT_MS = Number(process.env.TIMEOUT_MS || 8000);
 const DATA_DIR = path.resolve(HERE, process.env.DATA_DIR || 'data');
 const SERVERS_FILE = path.join(HERE, 'servers.json');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
+const VOTES_FILE = path.join(DATA_DIR, 'votes.json');
 const PUBLIC_DIR = path.join(HERE, 'public');
 const UA = 'StrongholdList/1.0 (+server list overview)';
 
@@ -40,6 +41,10 @@ const ADMIN_RANDOM = !process.env.ADMIN_PASSWORD;
 const REPORT_TOKEN = process.env.REPORT_TOKEN || '';
 const LOCAL_PROBE = process.env.LOCAL_PROBE ? process.env.LOCAL_PROBE === '1' : !REPORT_TOKEN;
 const reportState = { lastAt: 0, count: 0, source: '' };
+
+/** 玩家评分（超大杯 / 中杯）：{ [serverId]: { large, medium } } */
+let votes = {};
+const voteLog = new Map();   // ip|id|day → kind（每人每天每服一票）
 /** 登录后发的会话令牌（内存表，12 小时过期；重启失效 → 重新登录即可） */
 const sessions = new Map();
 const SESSION_TTL = 12 * 3600_000;
@@ -101,6 +106,26 @@ function saveState() {
     fs.renameSync(tmp, STATE_FILE);
   } catch (e) { log('状态写盘失败', e.message); }
   finally { saving = false; }
+}
+
+/** 评分：读盘 / 写盘 / 查一个服的票数 */
+function loadVotes() {
+  try {
+    const doc = JSON.parse(fs.readFileSync(VOTES_FILE, 'utf8'));
+    votes = doc && typeof doc === 'object' && !Array.isArray(doc) ? doc : {};
+  } catch { votes = {}; }
+}
+function saveVotes() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const tmp = `${VOTES_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(votes), 'utf8');
+    fs.renameSync(tmp, VOTES_FILE);
+  } catch (e) { log('评分写盘失败', e.message); }
+}
+function ratingOf(id) {
+  const v = votes[id] || {};
+  return { large: Number(v.large) || 0, medium: Number(v.medium) || 0 };
 }
 
 function ensureState(id) {
@@ -443,6 +468,30 @@ async function handleReport(req, res) {
   return json(res, 200, { ok: true, applied, unknown: unknown.slice(0, 10), servers: config.servers.length });
 }
 
+// ---------------------------------------------------------------- 评分（超大杯 / 中杯）
+
+/** POST /api/vote { id, kind: 'large'|'medium' } → 每人每天每服一票（按 IP 去重） */
+async function handleVote(req, res) {
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const id = String(body.id || '');
+  const kind = body.kind === 'large' || body.kind === 'medium' ? body.kind : '';
+  if (!kind) return json(res, 400, { error: 'kind 必须是 large 或 medium' });
+  const srv = config.servers.find((s) => s.id === id);
+  if (!srv) return json(res, 404, { error: '没有这个服务器' });
+
+  const ip = String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '')
+    .split(',')[0].trim();
+  const day = new Date().toISOString().slice(0, 10);
+  const key = `${ip}|${id}|${day}`;
+  if (voteLog.has(key)) return json(res, 429, { error: '今天已经给这个服投过票了', ...ratingOf(id) });
+  voteLog.set(key, kind);
+  votes[id] = votes[id] || { large: 0, medium: 0 };
+  votes[id][kind] = (Number(votes[id][kind]) || 0) + 1;
+  saveVotes();
+  log(`评分：${srv.title} ← ${kind}（${votes[id].large}/${votes[id].medium}）`);
+  return json(res, 200, { ok: true, ...ratingOf(id) });
+}
+
 // ---------------------------------------------------------------- HTTP
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png' };
@@ -484,6 +533,7 @@ function serversPayload(all = false) {
         uptime24h: s.uptime24h,
         uptime7d: s.uptime7d,
         history24h: s.history24h,
+        rating: ratingOf(srv.id),
       };
     }),
   };
@@ -499,6 +549,9 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/report' && req.method === 'POST') {
     return handleReport(req, res).catch((e) => json(res, 400, { error: e.message }));
   }
+  if (url.pathname === '/api/vote' && req.method === 'POST') {
+    return handleVote(req, res).catch((e) => json(res, 400, { error: e.message }));
+  }
   if (url.pathname === '/admin/login' || url.pathname.startsWith('/admin/api/')) {
     return handleAdmin(req, res, url).catch((e) => json(res, 400, { error: e.message }));
   }
@@ -509,6 +562,7 @@ const server = http.createServer((req, res) => {
 
 loadConfig();
 loadState();
+loadVotes();
 server.listen(PORT, HOST, () => {
   log(`列表站已启动 http://${HOST}:${PORT}（轮询 ${config.servers.length} 个服 / ${POLL_MS}ms）`);
   log(`管理页 /admin${ADMIN_RANDOM ? ' · 本次随机口令：' + ADMIN_PASSWORD + '（建议设置 ADMIN_PASSWORD 固定下来）' : ' · 口令来自 ADMIN_PASSWORD'}`);
