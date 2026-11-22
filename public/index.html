@@ -219,6 +219,9 @@ body.rl-ready .rl-wipe.in-hero>span{animation:rl-wipe-text .8s backwards;animati
 @keyframes rl-wipe-bar{0%{transform:scaleX(0);transform-origin:left}45%{transform:scaleX(1);transform-origin:left}
   55%{transform:scaleX(1);transform-origin:right}100%{transform:scaleX(0);transform-origin:right}}
 @keyframes rl-wipe-text{0%,50%{opacity:0}51%,100%{opacity:1}}
+/* 兜底：动画结束后把黑条彻底收掉（避免某些环境动画卡在中途） */
+.rl-wipe.done::after{animation:none;transform:scaleX(0)}
+.rl-wipe.done>span{animation:none;opacity:1}
 .rl-nameplate{position:relative;display:inline-flex;align-items:stretch;margin:0 0 16px}
 .rl-nameplate>i{display:grid;place-items:center;width:46px;background:var(--block);color:var(--on-block);
   font:900 15px var(--code);font-style:normal}
@@ -864,6 +867,8 @@ let booting = false;
 function bootReady() {
   document.body.classList.add('rl-ready');
   document.documentElement.classList.remove('rl-booting');
+  // 擦除动画 1.15s（0.35s 延迟 + 0.8s）后强制收尾，避免卡在中途
+  setTimeout(() => document.querySelectorAll('.rl-wipe').forEach((w) => w.classList.add('done')), 1400);
 }
 function at(ms, fn) { bootTimers.push(setTimeout(fn, ms)); }
 function bootPhase(n) {
