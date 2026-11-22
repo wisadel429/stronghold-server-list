@@ -14,3 +14,5 @@ node_modules/
 preview-admin.png
 _*.log
 preview-*.png
+preview.png
+reference/
