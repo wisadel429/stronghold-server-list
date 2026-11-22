@@ -1,0 +1,234 @@
+{
+  "pollSeconds": 30,
+  "servers": [
+    {
+      "id": "server-4",
+      "title": "三服",
+      "region": "上海 / 北京 / 香港 / 广州",
+      "maintainer": "凑鹈鹕",
+      "url": "https://sp.bbsmc.cn",
+      "statusPath": "/_v024/total-healthz",
+      "tags": [
+        "显示问题",
+        "目前正常运行",
+        "无限火力 1.1",
+        "0.2.6",
+        "香港2暂时离线"
+      ],
+      "notes": "香港2暂时离线；香港1、广州服可以游玩。支持无限火力、CDN预载及本地资源包。",
+      "order": 1,
+      "enabled": true
+    },
+    {
+      "id": "6545cd18fb1c66ff",
+      "title": "四服",
+      "region": "江苏镇江",
+      "maintainer": "Eibhlín_Selena",
+      "url": "https://cn.zuoyeyuanche.online:10443",
+      "statusPath": "/healthz",
+      "tags": [
+        "原版 危机合约 20人"
+      ],
+      "notes": "原版游戏ui还原 丰富敌人 20人房支持 危机合约 动态立绘 丰富bgm等 服务器需要令牌，每天刷新 加入群请先加入442017376审核",
+      "order": 1,
+      "enabled": true
+    },
+    {
+      "id": "ff6553ba069e5812",
+      "title": "七服三线合一",
+      "region": "HK/北京/厦门",
+      "maintainer": "千万言语",
+      "url": "http://fj.thousandaki.top:3000",
+      "statusPath": "/healthz/all",
+      "tags": [
+        "炸惊模拟",
+        "司凤版 BGM",
+        "卡池预选",
+        "DPS 统计"
+      ],
+      "notes": "兆为单位的boss血量等你来战",
+      "order": 2,
+      "enabled": true
+    },
+    {
+      "id": "bd21bba1ee989585",
+      "title": "九服",
+      "region": "江苏",
+      "maintainer": "CZJUN",
+      "url": "https://wei.czjun.top:11451",
+      "statusPath": "/healthz",
+      "tags": [
+        "纯原版",
+        "无魔改"
+      ],
+      "notes": "每12小时会检查并拉取最新的原版仓库更新",
+      "order": 2,
+      "enabled": true
+    },
+    {
+      "id": "9c3d07a6c3fa4db4",
+      "title": "十四服-四线合二",
+      "region": "杭州/深圳/宿迁/东莞",
+      "maintainer": "Emiraen",
+      "url": "https://emiraen.top",
+      "statusPath": "/healthz",
+      "tags": [
+        "排位天梯",
+        "联机肉鸽",
+        "炸惊模拟",
+        "舟铲铲之战",
+        "多人模式",
+        "湮灭模拟",
+        "好友系统",
+        "特色卡面"
+      ],
+      "notes": "接入官方0.3.1部分功能，有排位功能（已有1695人定级），特色卡面，舟铲铲之战以及不设上限无尽模式，湮灭模拟",
+      "order": 2,
+      "enabled": true
+    },
+    {
+      "id": "8b8c624a6a525a67",
+      "title": "六服",
+      "region": "北京",
+      "maintainer": "jingjiangze",
+      "url": "https://120.48.56.189",
+      "statusPath": "/healthz",
+      "tags": [
+        "2V2 赏金·控怪 团队资金"
+      ],
+      "notes": "",
+      "order": 4,
+      "enabled": true
+    },
+    {
+      "id": "94a4f72d17bb4920",
+      "title": "十一服",
+      "region": "香港",
+      "maintainer": "不知名信箱",
+      "url": "https://exastrisrestart.top",
+      "statusPath": "/healthz",
+      "tags": [
+        "雷姆必拓",
+        "、颂乐人偶、哥伦比亚",
+        "故事集盟约、模组管理",
+        "数据统计"
+      ],
+      "notes": "",
+      "order": 4,
+      "enabled": true
+    },
+    {
+      "id": "server-1",
+      "title": "一服",
+      "region": "广州",
+      "maintainer": "Wisadel",
+      "url": "http://8.134.50.56:3000",
+      "statusPath": "/healthz",
+      "tags": [
+        "超限",
+        "炸惊",
+        "堙灭"
+      ],
+      "notes": "",
+      "order": 5,
+      "enabled": true
+    },
+    {
+      "id": "server-2",
+      "title": "二服",
+      "region": "杭州",
+      "maintainer": "纸鸢安好",
+      "url": "http://101.37.150.107:3000",
+      "statusPath": "/healthz",
+      "tags": [],
+      "notes": "服务器不可用（在做重置），小机，原谅难以存载过多人数。",
+      "order": 6,
+      "enabled": true
+    },
+    {
+      "id": "fe6f3c5254c0117b",
+      "title": "八服",
+      "region": "广州",
+      "maintainer": "牢大变女人喵",
+      "url": "http://mc3.bbsmc.cn:11451",
+      "statusPath": "/healthz",
+      "tags": [
+        "无尽模式",
+        "乌萨斯",
+        "单人盟约",
+        "T7道具"
+      ],
+      "notes": "",
+      "order": 9,
+      "enabled": true
+    },
+    {
+      "id": "81417c28668f52c7",
+      "title": "八服 · 香港",
+      "region": "香港",
+      "maintainer": "牢大变女人喵",
+      "url": "http://mc1.bbsmc.cn:11451",
+      "statusPath": "/healthz",
+      "tags": [
+        "无尽模式",
+        "乌萨斯",
+        "单人盟约",
+        "T7道具"
+      ],
+      "notes": "",
+      "order": 10,
+      "enabled": true
+    },
+    {
+      "id": "15671794f0300674",
+      "title": "八服 · 首尔",
+      "region": "首尔",
+      "maintainer": "牢大变女人喵",
+      "url": "http://mc2.bbsmc.cn:11451",
+      "statusPath": "/healthz",
+      "tags": [
+        "无尽模式",
+        "乌萨斯",
+        "单人盟约",
+        "T7道具"
+      ],
+      "notes": "",
+      "order": 11,
+      "enabled": true
+    },
+    {
+      "id": "d1f6c7aa3095b16f",
+      "title": "十二服·测试阶段 可能会经常更新重启",
+      "region": "华北/北京",
+      "maintainer": "Eternal千溟兮",
+      "url": "http://123.249.8.51:3000",
+      "statusPath": "/healthz",
+      "tags": [
+        "海克斯模组",
+        "0.2.6",
+        "无尽模式",
+        "测试版"
+      ],
+      "notes": "测试阶段 有bug及时加群反馈",
+      "order": 12,
+      "enabled": true
+    },
+    {
+      "id": "e0e76efbc62f303f",
+      "title": "十服",
+      "region": "香港",
+      "maintainer": "ykn",
+      "url": "https://ausevaywstr.top",
+      "statusPath": "/healthz",
+      "tags": [
+        "头像插件",
+        "干员高亮标记",
+        "4倍速",
+        "原版"
+      ],
+      "notes": "去玩官方卫戍吧",
+      "order": 14,
+      "enabled": true
+    }
+  ]
+}

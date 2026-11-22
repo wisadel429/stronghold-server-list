@@ -1,0 +1,411 @@
+// list-site/server.mjs — 卫戍协议 · 服务器列表（总览站）
+//
+// 纯 Node（>=18），零依赖：轮询各服 /healthz → 存状态与走势 → 输出一个页面 + 一个 JSON API。
+// 数据契约沿用 2026-11-20 的 servers.json 备份（字段见 README）。
+//
+// 环境变量：
+//   PORT        监听端口（默认 3100）
+//   HOST        监听地址（默认 0.0.0.0）
+//   POLL_MS     轮询间隔（默认 30000）
+//   TIMEOUT_MS  单站超时（默认 8000；国内机房拉到海外服建议 10000）
+//   DATA_DIR    数据目录（默认 ./data，必须持久化）
+
+import http from 'node:http';
+import https from 'node:https';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const PORT = Number(process.env.PORT || 3100);
+const HOST = process.env.HOST || '0.0.0.0';
+const POLL_MS = Number(process.env.POLL_MS || 30000);
+const TIMEOUT_MS = Number(process.env.TIMEOUT_MS || 8000);
+const DATA_DIR = path.resolve(HERE, process.env.DATA_DIR || 'data');
+const SERVERS_FILE = path.join(HERE, 'servers.json');
+const STATE_FILE = path.join(DATA_DIR, 'state.json');
+const PUBLIC_DIR = path.join(HERE, 'public');
+const UA = 'StrongholdList/1.0 (+server list overview)';
+
+/** 管理页口令：环境变量优先；没设就每次启动随机生成（会打到日志里提醒） */
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || randomToken(6);
+const ADMIN_RANDOM = !process.env.ADMIN_PASSWORD;
+/** 登录后发的会话令牌（内存表，12 小时过期；重启失效 → 重新登录即可） */
+const sessions = new Map();
+const SESSION_TTL = 12 * 3600_000;
+
+/** 24 小时走势：48 个点，每 30 分钟一个 */
+const HISTORY_POINTS = 48;
+const POINT_MS = 30 * 60_000;
+
+const log = (...a) => console.log(new Date().toISOString(), ...a);
+
+// ---------------------------------------------------------------- 数据
+
+/** @type {{servers: any[], pollSeconds: number}} */
+let config = { servers: [], pollSeconds: Math.round(POLL_MS / 1000) };
+/** @type {Map<string, any>} */
+const state = new Map();
+
+function loadConfig() {
+  const raw = fs.readFileSync(SERVERS_FILE, 'utf8').replace(/^\uFEFF/, '');
+  const doc = JSON.parse(raw);
+  const rows = Array.isArray(doc) ? doc : doc.servers || [];
+  config.servers = rows
+    .filter((r) => r && r.url)
+    .map((r, i) => ({
+      id: String(r.id || `s${i}`),
+      title: String(r.title || r.url),
+      region: String(r.region || ''),
+      maintainer: String(r.maintainer || ''),
+      version: String(r.version || ''),
+      notes: String(r.notes || ''),
+      notice: String(r.notice || ''),
+      url: String(r.url).replace(/\/+$/, ''),
+      tags: Array.isArray(r.tags) ? r.tags.map(String) : [],
+      statusPath: String(r.statusPath || '/healthz'),
+      order: Number.isFinite(r.order) ? r.order : i,
+      // 下架的仍然留在配置里（管理页要能再上架），只是不探测、不上公开页
+      enabled: r.enabled !== false,
+    }))
+    .sort((a, b) => a.order - b.order);
+  log(`配置载入：${config.servers.length} 个服（其中 ${config.servers.filter((s) => s.enabled).length} 个启用）`);
+}
+
+function loadState() {
+  try {
+    const doc = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    for (const row of doc.servers || []) if (row && row.id) state.set(row.id, row);
+    log(`状态载入：${state.size} 条`);
+  } catch { /* 首次运行 */ }
+}
+
+let saving = false;
+function saveState() {
+  if (saving) return;
+  saving = true;
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const tmp = `${STATE_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ at: Date.now(), servers: [...state.values()] }), 'utf8');
+    fs.renameSync(tmp, STATE_FILE);
+  } catch (e) { log('状态写盘失败', e.message); }
+  finally { saving = false; }
+}
+
+function ensureState(id) {
+  let s = state.get(id);
+  if (!s) {
+    s = { id, status: null, uptime24h: null, uptime7d: null, history24h: [], days: {}, checkedAt: 0 };
+    state.set(id, s);
+  }
+  return s;
+}
+
+// ---------------------------------------------------------------- 探测
+
+/** 拉一个站的 /healthz，返回 { ok, status, latencyMs, error } */
+function probe(srv) {
+  return new Promise((resolve) => {
+    const url = srv.url + srv.statusPath;
+    const started = Date.now();
+    const mod = url.startsWith('https:') ? https : http;
+    const req = mod.get(url, {
+      timeout: TIMEOUT_MS,
+      headers: { 'user-agent': UA, accept: 'application/json' },
+      rejectUnauthorized: false, // 自签证书的服也要能收录（另记 certificateWarning）
+    }, (res) => {
+      const chunks = [];
+      let size = 0;
+      res.on('data', (c) => {
+        size += c.length;
+        if (size > 256 * 1024) { req.destroy(); return; }
+        chunks.push(c);
+      });
+      res.on('end', () => {
+        const latencyMs = Date.now() - started;
+        const body = Buffer.concat(chunks).toString('utf8');
+        let json = null;
+        try { json = JSON.parse(body); } catch { /* 不是 JSON */ }
+        if (res.statusCode !== 200 || !json) {
+          resolve({ ok: false, latencyMs, error: `HTTP ${res.statusCode}` });
+          return;
+        }
+        resolve({ ok: true, latencyMs, json });
+      });
+    });
+    req.on('timeout', () => { req.destroy(new Error('timeout')); });
+    req.on('error', (e) => resolve({ ok: false, latencyMs: Date.now() - started, error: e.code || e.message }));
+  });
+}
+
+/** healthz 的字段在不同版本上不完全一致，逐项兜底 */
+function normalizeHealth(json) {
+  const online = Number(json.online ?? json.players ?? json.humans);
+  // 注意：很多服的 healthz 里 `version` 是**协议号**（数字 1），游戏版本在 `app` 字段
+  const appVer = (typeof json.app === 'string' && json.app)
+    ? json.app
+    : ((typeof json.version === 'string' && /\d+\.\d+/.test(json.version)) ? json.version : '');
+  return {
+    state: json.ok === false ? 'offline' : 'online',
+    online: Number.isFinite(online) ? online : null,
+    rooms: Number.isFinite(Number(json.rooms)) ? Number(json.rooms) : null,
+    matches: Number.isFinite(Number(json.matches)) ? Number(json.matches) : null,
+    version: String(appVer || ''),
+    build: String(json.build || ''),
+    sockets: Number.isFinite(Number(json.sockets)) ? Number(json.sockets) : null,
+  };
+}
+
+function pushPoint(s, ts, online) {
+  s.history24h.push([ts, online]);
+  const cut = ts - 24 * 3600_000;
+  while (s.history24h.length && s.history24h[0][0] < cut) s.history24h.shift();
+  if (s.history24h.length > HISTORY_POINTS) s.history24h = s.history24h.slice(-HISTORY_POINTS);
+}
+
+/** 按天累计可用率（保留最近 7 天） */
+function bumpDay(s, ok, ts) {
+  const d = new Date(ts);
+  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const day = s.days[key] || { ok: 0, total: 0 };
+  day.total++;
+  if (ok) day.ok++;
+  s.days[key] = day;
+  const keys = Object.keys(s.days).sort();
+  while (keys.length > 7) delete s.days[keys.shift()];
+  let ok7 = 0, t7 = 0;
+  for (const k of Object.keys(s.days)) { ok7 += s.days[k].ok; t7 += s.days[k].total; }
+  s.uptime7d = t7 ? Math.round((ok7 / t7) * 1000) / 10 : null;
+}
+
+async function pollOne(srv) {
+  const s = ensureState(srv.id);
+  const r = await probe(srv);
+  const now = Date.now();
+  s.checkedAt = now;
+  s.latencyMs = r.ok ? r.latencyMs : null;
+  s.error = r.ok ? null : r.error;
+  if (r.ok) {
+    s.status = normalizeHealth(r.json);
+    s.status.latencyMs = r.latencyMs;
+    s.status.certificateWarning = false;
+  } else {
+    s.status = { state: 'unreachable', online: null, latencyMs: null };
+  }
+  // 只按"在线/离线"记点，人数单独存，避免走势被空值打断
+  const online = r.ok && s.status.online != null ? s.status.online : (r.ok ? 0 : null);
+  pushPoint(s, now, online);
+  bumpDay(s, r.ok, now);
+  const okPoints = s.history24h.filter((p) => p[1] != null).length;
+  s.uptime24h = s.history24h.length ? Math.round((okPoints / s.history24h.length) * 1000) / 10 : null;
+}
+
+let polling = false;
+async function pollAll() {
+  if (polling) return;
+  polling = true;
+  const started = Date.now();
+  try {
+    const active = config.servers.filter((srv) => srv.enabled !== false);
+    await Promise.all(active.map((srv) => pollOne(srv).catch((e) => log('探测异常', srv.id, e.message))));
+  } finally {
+    polling = false;
+    saveState();
+    log(`轮询完成：${config.servers.length} 个服，用时 ${Date.now() - started}ms`);
+  }
+}
+
+// ---------------------------------------------------------------- 管理（/admin）
+
+function randomToken(n = 24) {
+  return crypto.randomBytes(n).toString('hex').slice(0, n * 2);
+}
+
+function readBody(req, max = 64 * 1024) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > max) { reject(new Error('body too large')); req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+function cookieOf(req, name) {
+  const raw = String(req.headers.cookie || '');
+  for (const part of raw.split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0 && part.slice(0, i).trim() === name) return part.slice(i + 1).trim();
+  }
+  return '';
+}
+
+function authed(req) {
+  const t = cookieOf(req, 'sl_admin');
+  const exp = sessions.get(t);
+  if (!exp) return false;
+  if (Date.now() > exp) { sessions.delete(t); return false; }
+  return true;
+}
+
+/** 读原始 servers.json（保住别人的手写字段，不整份重写） */
+function readServersRaw() {
+  const doc = JSON.parse(fs.readFileSync(SERVERS_FILE, 'utf8').replace(/^\uFEFF/, ''));
+  const rows = Array.isArray(doc) ? doc : (doc.servers || []);
+  return { base: Array.isArray(doc) ? { servers: rows } : doc, rows };
+}
+
+function writeServersFile(rows) {
+  const doc = { pollSeconds: Math.round(POLL_MS / 1000), servers: rows };
+  const tmp = `${SERVERS_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(doc, null, 2), 'utf8');
+  fs.renameSync(tmp, SERVERS_FILE);
+  loadConfig();
+}
+
+/** 管理页提交的一行 → 规范化（缺 id 视为新增） */
+function rowFromInput(b) {
+  const url = String(b.url || '').trim().replace(/\/+$/, '');
+  if (!/^https?:\/\//i.test(url)) throw new Error('入口地址必须以 http:// 或 https:// 开头');
+  const tags = Array.isArray(b.tags)
+    ? b.tags.map((t) => String(t).trim()).filter(Boolean)
+    : String(b.tags || '').split(/[,，、]/).map((t) => t.trim()).filter(Boolean);
+  return {
+    id: String(b.id || '').trim() || `s${Date.now().toString(36)}`,
+    title: String(b.title || '').trim() || url,
+    region: String(b.region || '').trim(),
+    maintainer: String(b.maintainer || '').trim(),
+    url,
+    statusPath: String(b.statusPath || '/healthz').trim() || '/healthz',
+    tags,
+    notes: String(b.notes || '').trim().replace(/\s*\n\s*/g, '\n'),
+    order: Number.isFinite(Number(b.order)) ? Number(b.order) : 99,
+    enabled: b.enabled !== false,
+  };
+}
+
+async function handleAdmin(req, res, url) {
+  // 登录
+  if (url.pathname === '/admin/login' && req.method === 'POST') {
+    const body = JSON.parse((await readBody(req)) || '{}');
+    if (String(body.password || '') !== ADMIN_PASSWORD) return json(res, 401, { error: '口令不对' });
+    const token = randomToken(24);
+    sessions.set(token, Date.now() + SESSION_TTL);
+    res.setHeader('set-cookie', `sl_admin=${token}; HttpOnly; Path=/; Max-Age=${SESSION_TTL / 1000}; SameSite=Lax`);
+    return json(res, 200, { ok: true, ttlHours: SESSION_TTL / 3600_000 });
+  }
+
+  if (!authed(req)) return json(res, 401, { error: '未登录' });
+
+  if (url.pathname === '/admin/api/list') return json(res, 200, serversPayload(true));
+
+  if (url.pathname === '/admin/api/save' && req.method === 'POST') {
+    const row = rowFromInput(JSON.parse((await readBody(req)) || '{}'));
+    const { base, rows } = readServersRaw();
+    const i = rows.findIndex((r) => r && r.id === row.id);
+    if (i >= 0) rows[i] = { ...rows[i], ...row };
+    else rows.push(row);
+    writeServersFile(rows);
+    pollAll();
+    log(`管理：${i >= 0 ? '修改' : '新增'} ${row.id} ${row.title}`);
+    return json(res, 200, { ok: true, id: row.id, created: i < 0, count: rows.length });
+  }
+
+  if (url.pathname === '/admin/api/delete' && req.method === 'POST') {
+    const { id } = JSON.parse((await readBody(req)) || '{}');
+    const { rows } = readServersRaw();
+    const next = rows.filter((r) => r && r.id !== id);
+    if (next.length === rows.length) return json(res, 404, { error: '没找到这条' });
+    writeServersFile(next);
+    state.delete(id);
+    log(`管理：删除 ${id}`);
+    return json(res, 200, { ok: true, count: next.length });
+  }
+
+  if (url.pathname === '/admin/api/toggle' && req.method === 'POST') {
+    const { id, enabled } = JSON.parse((await readBody(req)) || '{}');
+    const { rows } = readServersRaw();
+    const row = rows.find((r) => r && r.id === id);
+    if (!row) return json(res, 404, { error: '没找到这条' });
+    row.enabled = !!enabled;
+    writeServersFile(rows);
+    log(`管理：${enabled ? '上架' : '下架'} ${id}`);
+    return json(res, 200, { ok: true });
+  }
+
+  return json(res, 404, { error: 'not found' });
+}
+
+// ---------------------------------------------------------------- HTTP
+
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png' };
+
+function json(res, code, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+  res.end(body);
+}
+
+function serveStatic(res, rel) {
+  const file = path.join(PUBLIC_DIR, rel === '/' ? 'index.html' : rel);
+  if (!file.startsWith(PUBLIC_DIR)) { res.writeHead(403); res.end('forbidden'); return; }
+  try {
+    const buf = fs.readFileSync(file);
+    res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' });
+    res.end(buf);
+  } catch {
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    res.end('404');
+  }
+}
+
+function serversPayload(all = false) {
+  const list = all ? config.servers : config.servers.filter((s) => s.enabled !== false);
+  return {
+    pollSeconds: Math.round(POLL_MS / 1000),
+    serverTime: Date.now(),
+    servers: list.map((srv) => {
+      const s = ensureState(srv.id);
+      return {
+        ...srv,
+        status: s.status,
+        checkedAt: s.checkedAt,
+        uptime24h: s.uptime24h,
+        uptime7d: s.uptime7d,
+        history24h: s.history24h,
+      };
+    }),
+  };
+}
+
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url || '/', 'http://x');
+  if (url.pathname === '/api/servers') return json(res, 200, serversPayload());
+  if (url.pathname === '/healthz') {
+    return json(res, 200, { ok: true, service: 'stronghold-server-list', servers: config.servers.length, at: Date.now() });
+  }
+  if (url.pathname === '/admin') return serveStatic(res, '/admin.html');
+  if (url.pathname === '/admin/login' || url.pathname.startsWith('/admin/api/')) {
+    return handleAdmin(req, res, url).catch((e) => json(res, 400, { error: e.message }));
+  }
+  return serveStatic(res, decodeURIComponent(url.pathname));
+});
+
+// ---------------------------------------------------------------- 启动
+
+loadConfig();
+loadState();
+server.listen(PORT, HOST, () => {
+  log(`列表站已启动 http://${HOST}:${PORT}（轮询 ${config.servers.length} 个服 / ${POLL_MS}ms）`);
+  log(`管理页 /admin${ADMIN_RANDOM ? ' · 本次随机口令：' + ADMIN_PASSWORD + '（建议设置 ADMIN_PASSWORD 固定下来）' : ' · 口令来自 ADMIN_PASSWORD'}`);
+  pollAll();
+  setInterval(pollAll, POLL_MS).unref?.();
+});
+process.on('SIGTERM', () => { saveState(); server.close(() => process.exit(0)); });
+process.on('SIGINT', () => { saveState(); server.close(() => process.exit(0)); });

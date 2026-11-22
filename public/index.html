@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<title>卫戍协议 · 服务器列表</title>
+<style>
+:root{
+  --bg:#070b09; --panel:#0b110d; --panel2:#0d1310; --line:#1d2a22; --line2:#263a2d;
+  --text:#e8f2ea; --mut:#7f9488; --dim:#5d6f64;
+  --green:#35d07f; --mint:#7bf0b0; --amber:#d8a94a; --red:#e05a4f;
+  --mono:"Cascadia Mono",Consolas,"SFMono-Regular",monospace;
+  --sans:"Microsoft YaHei","Noto Sans SC","PingFang SC",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{color:var(--text);background:var(--bg);font:14px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(900px 520px at 18% -8%,rgba(28,74,52,.5),transparent 62%),
+             radial-gradient(760px 460px at 92% 108%,rgba(16,52,38,.42),transparent 66%),
+             linear-gradient(180deg,#0a100c 0%,var(--bg) 52%,#060a08 100%)}
+body::after{content:"";position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.45;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.02) 0 1px,transparent 1px 3px),
+             radial-gradient(120% 90% at 50% 48%,transparent 52%,rgba(0,0,0,.55) 100%)}
+.shell{position:relative;z-index:2;max-width:1320px;margin:0 auto;padding:26px 26px 40px}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;
+  padding-bottom:16px;border-bottom:1px solid var(--line)}
+h1{margin:0;font-size:22px;letter-spacing:.06em;font-weight:800}
+.eyebrow{font:10px/1 var(--mono);letter-spacing:.22em;color:var(--dim);margin-bottom:8px}
+.sub{color:var(--mut);font-size:11.5px;letter-spacing:.16em;font-family:var(--mono);margin-top:6px}
+.stats{display:flex;gap:18px;flex-wrap:wrap}
+.stat{min-width:78px}
+.stat b{display:block;font:700 20px/1.1 var(--mono);color:var(--mint)}
+.stat span{display:block;font-size:10.5px;letter-spacing:.16em;color:var(--dim);margin-top:4px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 4px;align-items:center}
+.chip{padding:5px 12px;border:1px solid var(--line2);border-radius:999px;background:var(--panel2);
+  color:var(--mut);font-size:12px;cursor:pointer;user-select:none}
+.chip:hover{border-color:var(--green);color:var(--text)}
+.chip.on{border-color:rgba(53,208,127,.65);color:var(--mint);background:rgba(53,208,127,.1)}
+.search{margin-left:auto;display:flex;align-items:center;gap:8px}
+.search input{width:210px;padding:6px 10px;border-radius:7px;border:1px solid var(--line2);
+  background:#080d0a;color:var(--text);font:12.5px/1.4 var(--sans);outline:none}
+.search input:focus{border-color:rgba(53,208,127,.6)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(392px,1fr));gap:14px;margin-top:16px}
+.card{border:1px solid var(--line);border-radius:10px;background:linear-gradient(180deg,rgba(16,24,18,.9),rgba(9,14,11,.92));
+  padding:14px 16px 12px;position:relative;overflow:hidden}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--dim)}
+.card.online::before{background:var(--green);box-shadow:0 0 14px rgba(53,208,127,.5)}
+.card.offline::before{background:var(--red)}
+.card__top{display:flex;align-items:center;gap:10px}
+.card__title{font-size:15.5px;font-weight:800;letter-spacing:.02em}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none}
+.card.online .dot{background:var(--green);box-shadow:0 0 8px var(--green)}
+.card.offline .dot{background:var(--red);box-shadow:0 0 8px rgba(224,90,79,.6)}
+.badge{margin-left:auto;font:9.5px/1 var(--mono);letter-spacing:.12em;padding:4px 7px;border-radius:4px;
+  border:1px solid currentColor;color:var(--mut)}
+.card.online .badge{color:var(--green)}
+.card.offline .badge{color:var(--red)}
+.meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;font-size:11.5px;color:var(--mut)}
+.meta a{color:var(--mint);text-decoration:none;border-bottom:1px dotted rgba(123,240,176,.35);word-break:break-all}
+.meta a:hover{color:#fff}
+.kv{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid rgba(29,42,34,.8)}
+.kv div{min-width:0}
+.kv b{display:block;font:700 16px/1.1 var(--mono);color:var(--text)}
+.kv b.dim{color:var(--dim);font-weight:400}
+.kv span{display:block;font-size:10px;letter-spacing:.1em;color:var(--dim);margin-top:3px}
+.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.tag{font-size:10.5px;padding:2px 7px;border-radius:999px;border:1px solid var(--line2);color:var(--mut)}
+.notes{margin-top:9px;font-size:11.5px;color:var(--dim);line-height:1.5;white-space:pre-wrap}
+.spark{margin-top:10px;display:block;width:100%;height:34px}
+.empty{padding:60px 0;text-align:center;color:var(--dim)}
+footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);color:var(--dim);
+  font-size:11.5px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+footer b{color:var(--mut);font-weight:400}
+@media (max-width:640px){
+  .shell{padding:18px 14px 30px}
+  .grid{grid-template-columns:1fr}
+  .search{margin-left:0;width:100%}
+  .search input{width:100%}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div>
+      <div class="eyebrow">STRONGHOLD PROTOCOL · ALLIANCE</div>
+      <h1>卫戍协议 · 服务器列表</h1>
+      <div class="sub">SERVER STATUS · 每 <span id="pollSec">30</span> 秒自动刷新</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="sOnline">–</b><span>在线服</span></div>
+      <div class="stat"><b id="sTotal">–</b><span>收录总数</span></div>
+      <div class="stat"><b id="sPlayers">–</b><span>在线玩家</span></div>
+      <div class="stat"><b id="sRooms">–</b><span>房间</span></div>
+    </div>
+  </header>
+
+  <div class="filters">
+    <div class="chip on" data-f="all">全部</div>
+    <div class="chip" data-f="online">在线</div>
+    <div class="chip" data-f="offline">离线</div>
+    <div class="chip" data-f="busy">有玩家</div>
+    <div class="search"><input id="q" placeholder="搜索服名 / 维护者 / 标签…" autocomplete="off" /></div>
+  </div>
+
+  <div class="grid" id="grid"><div class="empty">正在读取…</div></div>
+
+  <footer>
+    <span>数据来自各服 <b>/healthz</b> · 超时 8 秒视为离线 · 走势为最近 24 小时</span>
+    <span>更新于 <b id="updated">–</b></span>
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const state = { items: [], filter: 'all', q: '' };
+
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/** 24 小时走势 → 内联 SVG 折线（空值断开） */
+function sparkline(points) {
+  const w = 360, h = 34;
+  if (!points || !points.length) return '';
+  const vals = points.map((p) => p[1]);
+  const known = vals.filter((v) => v != null);
+  const max = Math.max(1, ...known);
+  const step = w / Math.max(1, points.length - 1);
+  let d = '';
+  let pen = false;
+  points.forEach((p, i) => {
+    if (p[1] == null) { pen = false; return; }
+    const x = (i * step).toFixed(1);
+    const y = (h - 3 - (p[1] / max) * (h - 6)).toFixed(1);
+    d += (pen ? 'L' : 'M') + x + ',' + y;
+    pen = true;
+  });
+  return '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">' +
+    '<path d="' + d + '" fill="none" stroke="rgba(53,208,127,.85)" stroke-width="1.6" stroke-linejoin="round"/>' +
+    '</svg>';
+}
+
+function uptimeText(v) { return v == null ? '—' : v.toFixed(1) + '%'; }
+
+function render() {
+  const list = state.items.filter((s) => {
+    const st = s.status || {};
+    const online = st.state === 'online';
+    if (state.filter === 'online' && !online) return false;
+    if (state.filter === 'offline' && online) return false;
+    if (state.filter === 'busy' && !(st.online > 0)) return false;
+    if (state.q) {
+      const hay = (s.title + ' ' + s.maintainer + ' ' + (s.tags || []).join(' ') + ' ' + s.region).toLowerCase();
+      if (!hay.includes(state.q.toLowerCase())) return false;
+    }
+    return true;
+  });
+
+  const total = state.items.length;
+  const online = state.items.filter((s) => (s.status || {}).state === 'online').length;
+  const players = state.items.reduce((n, s) => n + (Number((s.status || {}).online) || 0), 0);
+  const rooms = state.items.reduce((n, s) => n + (Number((s.status || {}).rooms) || 0), 0);
+  $('sOnline').textContent = online;
+  $('sTotal').textContent = total;
+  $('sPlayers').textContent = players;
+  $('sRooms').textContent = rooms;
+
+  const grid = $('grid');
+  if (!list.length) { grid.innerHTML = '<div class="empty">没有匹配的服务器</div>'; return; }
+  grid.innerHTML = list.map((s) => {
+    const st = s.status || {};
+    const on = st.state === 'online';
+    const lat = st.latencyMs ? st.latencyMs + ' ms' : '—';
+    return '<div class="card ' + (on ? 'online' : 'offline') + '">' +
+      '<div class="card__top"><span class="dot"></span>' +
+        '<span class="card__title">' + esc(s.title) + '</span>' +
+        '<span class="badge">' + (on ? 'ONLINE' : 'OFFLINE') + '</span></div>' +
+      '<div class="meta">' +
+        (s.region ? '<span>' + esc(s.region) + '</span>' : '') +
+        (s.maintainer ? '<span>维护 · ' + esc(s.maintainer) + '</span>' : '') +
+        '<a href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.url) + '</a>' +
+      '</div>' +
+      '<div class="kv">' +
+        '<div><b class="' + (on && st.online != null ? '' : 'dim') + '">' + (st.online == null ? '—' : st.online) + '</b><span>在线玩家</span></div>' +
+        '<div><b class="' + (on ? '' : 'dim') + '">' + (st.rooms == null ? '—' : st.rooms) + '</b><span>房间</span></div>' +
+        '<div><b class="' + (on ? '' : 'dim') + '">' + esc(st.version || '—') + '</b><span>版本</span></div>' +
+        '<div><b class="' + (on ? '' : 'dim') + '">' + lat + '</b><span>延迟 / 24h ' + uptimeText(s.uptime24h) + '</span></div>' +
+      '</div>' +
+      ((s.tags && s.tags.length) ? '<div class="tags">' + s.tags.map((t) => '<span class="tag">' + esc(t) + '</span>').join('') + '</div>' : '') +
+      (s.notes ? '<div class="notes">' + esc(s.notes) + '</div>' : '') +
+      sparkline(s.history24h) +
+      '</div>';
+  }).join('');
+}
+
+async function load() {
+  try {
+    const r = await fetch('/api/servers', { cache: 'no-store' });
+    const j = await r.json();
+    state.items = j.servers || [];
+    $('pollSec').textContent = j.pollSeconds || 30;
+    $('updated').textContent = new Date(j.serverTime || Date.now()).toLocaleTimeString();
+    render();
+  } catch (e) {
+    $('grid').innerHTML = '<div class="empty">读取失败：' + esc(e.message) + '</div>';
+  }
+}
+
+document.querySelectorAll('.chip').forEach((el) => {
+  el.onclick = () => {
+    document.querySelectorAll('.chip').forEach((x) => x.classList.remove('on'));
+    el.classList.add('on');
+    state.filter = el.dataset.f;
+    render();
+  };
+});
+$('q').oninput = (e) => { state.q = e.target.value.trim(); render(); };
+
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+[Unit]
+Description=Stronghold Server List (overview site)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/stronghold-list
+ExecStart=/usr/bin/node server.mjs
+Environment=NODE_ENV=production
+Environment=PORT=3100
+Environment=POLL_MS=30000
+Environment=TIMEOUT_MS=8000
+# 管理页口令：改成你自己的（不设则每次启动随机生成，见 journalctl 日志）
+Environment=ADMIN_PASSWORD=change-me-please
+Restart=always
+RestartSec=5
+# 轮询只是出站请求 + 写一个小 json，内存给 256M 足够
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target
