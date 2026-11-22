@@ -14,3 +14,4 @@ node_modules/
 .DS_Store
 preview-admin.png
 _*.log
+preview-*.png
