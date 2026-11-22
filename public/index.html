@@ -747,7 +747,7 @@ function render() {
         barsHtml(s.history24h, s.title + ' 最近 24 小时') +
         '<div class="rl-hlabels"><span>24 小时前</span><span>12 小时前</span><span>现在</span></div>' +
         '<div class="rl-vote">' +
-          '<button type="button" data-vote="large" data-id="' + esc(s.id) + '"' + (my ? ' class="is-voted"' : '') + '><span>超大杯</span> <b>' + (rt.large || 0) + '</b></button>' +
+          '<button type="button" data-vote="large" data-id="' + esc(s.id) + '"' + (my === 'large' ? ' class="is-voted"' : '') + '><span>超大杯</span> <b>' + (rt.large || 0) + '</b></button>' +
           '<button type="button" data-vote="medium" data-id="' + esc(s.id) + '"' + (my === 'medium' ? ' class="is-voted"' : '') + '><span>中杯</span> <b>' + (rt.medium || 0) + '</b></button>' +
         '</div>' +
       '</div>' +
@@ -867,7 +867,9 @@ $('grid').addEventListener('click', async (ev) => {
   const kind = el.getAttribute('data-vote');
   const id = el.getAttribute('data-id');
   if (kind && id) {
-    if (myVote(id)) { toast('今天已经给这个服投过票了'); return; }
+    // 业主 2026-11-22：允许当天改投（点错了不再锁到第二天）
+    const prev = myVote(id);
+    if (prev === kind) { toast(kind === 'large' ? '你已经投过超大杯了' : '你已经投过中杯了'); return; }
     try {
       const r = await fetch('/api/vote', {
         method: 'POST', headers: { 'content-type': 'application/json' },
@@ -879,7 +881,8 @@ $('grid').addEventListener('click', async (ev) => {
       const s = state.items.find((x) => x.id === id);
       if (s) s.rating = { large: j.large, medium: j.medium };
       render();
-      toast(kind === 'large' ? '已投：超大杯' : '已投：中杯');
+      const label = kind === 'large' ? '超大杯' : '中杯';
+      toast(j.unchanged ? ('已经是「' + label + '」了') : (prev ? ('已改投：' + label) : ('已投：' + label)));
     } catch { toast('投票失败，请检查网络'); }
   }
 });

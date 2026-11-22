@@ -28,6 +28,8 @@ const SERVERS_FILE = path.join(HERE, 'servers.json');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
 const VOTES_FILE = path.join(DATA_DIR, 'votes.json');
 const PUBLIC_DIR = path.join(HERE, 'public');
+// 感谢名单（业主 2026-11-22）：前台首屏读这份静态副本，后台可在线编辑（写回同一个文件）
+const THANKS_FILE = path.join(PUBLIC_DIR, 'thanks.json');
 const UA = 'StrongholdList/1.0 (+server list overview)';
 
 /** 管理页口令：环境变量优先；没设就每次启动随机生成（会打到日志里提醒） */
@@ -126,6 +128,57 @@ function saveVotes() {
 function ratingOf(id) {
   const v = votes[id] || {};
   return { large: Number(v.large) || 0, medium: Number(v.medium) || 0 };
+}
+
+// ---------------------------------------------------------------- 感谢名单（业主 2026-11-22：后台可在线编辑）
+
+/** 单行清洗：折叠空白、去首尾、截断（名字和职责都是单行展示，换行没意义） */
+const thanksText = (v, max) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max);
+
+/** 读当前名单；文件缺失或 JSON 损坏时返回空名单，不抛错（管理页照样能编辑） */
+function readThanks() {
+  try {
+    const doc = JSON.parse(fs.readFileSync(THANKS_FILE, 'utf8'));
+    if (doc && Array.isArray(doc.names)) {
+      return {
+        v: Number(doc.v) || 0,
+        updated: String(doc.updated || ''),
+        title: String(doc.title || '感谢名单'),
+        micro: String(doc.micro || 'THANKS LIST'),
+        prefix: String(doc.prefix || ''),
+        names: doc.names.map((n) => ({ name: String(n && n.name || ''), role: String(n && n.role || '') })),
+        dedication: { name: String(doc.dedication && doc.dedication.name || ''), role: String(doc.dedication && doc.dedication.role || '') },
+      };
+    }
+  } catch { /* 缺文件或坏 JSON：落到下面的空名单 */ }
+  return { v: 0, updated: '', title: '感谢名单', micro: 'THANKS LIST', prefix: '', names: [], dedication: { name: '', role: '' } };
+}
+
+/**
+ * 写入名单：清洗 → 原子写（tmp + rename）→ `v` 自增。
+ * `v` 是前台判断「要不要重画轨道」的依据，必须每次保存都变。
+ */
+function writeThanks(input) {
+  const src = input && typeof input === 'object' ? input : {};
+  const names = (Array.isArray(src.names) ? src.names : [])
+    .map((n) => ({ name: thanksText(n && n.name, 40), role: thanksText(n && n.role, 60) }))
+    .filter((n) => n.name)
+    .slice(0, 300);
+  const ded = src.dedication && typeof src.dedication === 'object' ? src.dedication : {};
+  const doc = {
+    v: Math.max(1, Number(readThanks().v) || 0) + 1,
+    updated: new Date().toISOString().slice(0, 10),
+    title: thanksText(src.title, 40) || '感谢名单',
+    micro: thanksText(src.micro, 40) || 'THANKS LIST',
+    prefix: thanksText(src.prefix, 20),
+    names,
+    dedication: { name: thanksText(ded.name, 40), role: thanksText(ded.role, 60) },
+  };
+  fs.mkdirSync(PUBLIC_DIR, { recursive: true });
+  const tmp = `${THANKS_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(doc), 'utf8');
+  fs.renameSync(tmp, THANKS_FILE);
+  return doc;
 }
 
 function ensureState(id) {
@@ -435,6 +488,17 @@ async function handleAdmin(req, res, url) {
     return json(res, 200, { ok: true });
   }
 
+  // 感谢名单：GET 读、POST 写（业主 2026-11-22 提的需求：后台直接编辑，不用改文件再部署）
+  if (url.pathname === '/admin/api/thanks') {
+    if (req.method === 'GET') return json(res, 200, readThanks());
+    if (req.method === 'POST') {
+      const doc = writeThanks(JSON.parse((await readBody(req)) || '{}'));
+      log(`管理：感谢名单已更新（${doc.names.length} 位，v${doc.v}）`);
+      return json(res, 200, { ok: true, count: doc.names.length, doc });
+    }
+    return json(res, 405, { error: '只支持 GET / POST' });
+  }
+
   return json(res, 404, { error: 'not found' });
 }
 
@@ -478,7 +542,11 @@ async function handleReport(req, res) {
 
 // ---------------------------------------------------------------- 评分（超大杯 / 中杯）
 
-/** POST /api/vote { id, kind: 'large'|'medium' } → 每人每天每服一票（按 IP 去重） */
+/**
+ * POST /api/vote { id, kind: 'large'|'medium' } → 每人每天每服**一票，但可以改投**
+ * （业主 2026-11-22：点错了不该被锁死到第二天）
+ * 改投 = 把旧那一票扣掉（最小 0）再记新票，同一 IP 同一天同一服始终只算一票。
+ */
 async function handleVote(req, res) {
   const body = JSON.parse((await readBody(req)) || '{}');
   const id = String(body.id || '');
@@ -491,13 +559,15 @@ async function handleVote(req, res) {
     .split(',')[0].trim();
   const day = new Date().toISOString().slice(0, 10);
   const key = `${ip}|${id}|${day}`;
-  if (voteLog.has(key)) return json(res, 429, { error: '今天已经给这个服投过票了', ...ratingOf(id) });
-  voteLog.set(key, kind);
+  const prev = voteLog.get(key) || '';
+  if (prev === kind) return json(res, 200, { ok: true, unchanged: true, myKind: kind, ...ratingOf(id) });
   votes[id] = votes[id] || { large: 0, medium: 0 };
+  if (prev) votes[id][prev] = Math.max(0, (Number(votes[id][prev]) || 0) - 1);   // 改投：先退旧票
   votes[id][kind] = (Number(votes[id][kind]) || 0) + 1;
+  voteLog.set(key, kind);
   saveVotes();
-  log(`评分：${srv.title} ← ${kind}（${votes[id].large}/${votes[id].medium}）`);
-  return json(res, 200, { ok: true, ...ratingOf(id) });
+  log(`评分：${srv.title} ← ${kind}${prev ? `（由 ${prev} 改投）` : ''}（${votes[id].large}/${votes[id].medium}）`);
+  return json(res, 200, { ok: true, changed: !!prev, myKind: kind, ...ratingOf(id) });
 }
 
 // ---------------------------------------------------------------- HTTP

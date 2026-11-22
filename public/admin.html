@@ -258,6 +258,32 @@ body{background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans);
             </div>
           </form>
         </section>
+
+        <section class="rl-panel" id="thanks-panel">
+          <span class="rl-code">THANKS LIST</span>
+          <h2>感谢名单</h2>
+          <p class="rl-muted">前台首屏读 <code>/thanks.json</code>；这里改完点保存即刻生效，不用重新部署。</p>
+          <form id="thanks-form">
+            <div class="rl-form-row">
+              <label>标题<input name="title" maxlength="40" placeholder="感谢名单" /></label>
+              <label>英文小标<input name="micro" maxlength="40" placeholder="THANKS LIST" /></label>
+            </div>
+            <label>名字前缀<input name="prefix" maxlength="20" placeholder="例如 bilibili_（可留空）" /></label>
+            <div id="thanks-rows" style="margin:6px 0 0"></div>
+            <div class="rl-actions" style="margin-top:6px">
+              <button id="thanks-add" class="rl-btn" type="button">＋ 添加一位</button>
+              <span class="rl-muted" id="thanks-count" style="font-size:11px;align-self:center"></span>
+            </div>
+            <div class="rl-form-row" style="margin-top:12px">
+              <label>特别致敬（名字）<input name="dedName" maxlength="40" placeholder="留空则不显示" /></label>
+              <label>特别致敬（职责）<input name="dedRole" maxlength="60" /></label>
+            </div>
+            <div class="rl-actions">
+              <button class="rl-btn rl-join" type="submit">保存名单</button>
+              <button id="thanks-reload" class="rl-btn" type="button">重新读取</button>
+            </div>
+          </form>
+        </section>
       </div>
     </section>
   </main>
@@ -338,7 +364,65 @@ async function load() {
   renderRecords();
   showDash();
   msg('已载入 ' + items.length + ' 条 · 在线 ' + items.filter((s) => (s.status || {}).state === 'online').length);
+  loadThanks();
 }
+
+// ---- 感谢名单（业主 2026-11-22：后台在线编辑，不用改文件再部署）----
+let thanksDoc = null;
+
+function thanksRow(name, role) {
+  const row = document.createElement('div');
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin:6px 0';
+  row.innerHTML = '<input data-f="name" maxlength="40" placeholder="名字" />' +
+    '<input data-f="role" maxlength="60" placeholder="职责（可留空）" />' +
+    '<button class="rl-btn rl-danger" type="button" data-del="1">删除</button>';
+  row.querySelector('[data-f="name"]').value = name || '';
+  row.querySelector('[data-f="role"]').value = role || '';
+  return row;
+}
+
+function paintThanks() {
+  const f = $('#thanks-form');
+  const d = thanksDoc || { title: '感谢名单', micro: 'THANKS LIST', prefix: '', names: [], dedication: {} };
+  f.title.value = d.title || '';
+  f.micro.value = d.micro || '';
+  f.prefix.value = d.prefix || '';
+  f.dedName.value = (d.dedication && d.dedication.name) || '';
+  f.dedRole.value = (d.dedication && d.dedication.role) || '';
+  const rows = (d.names || []).map((n) => thanksRow(n.name, n.role));
+  $('#thanks-rows').replaceChildren(...rows);
+  $('#thanks-count').textContent = (d.names || []).length + ' 位 · v' + (d.v || 0) + (d.updated ? ' · ' + d.updated : '');
+}
+
+async function loadThanks() {
+  try { thanksDoc = await api('/admin/api/thanks'); paintThanks(); }
+  catch (e) { msg('感谢名单读取失败：' + e.message, true); }
+}
+
+$('#thanks-add').onclick = () => { $('#thanks-rows').append(thanksRow('', '')); };
+$('#thanks-reload').onclick = () => loadThanks();
+$('#thanks-rows').addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-del]');
+  if (b) b.closest('div').remove();
+});
+$('#thanks-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const f = ev.target;
+  const names = Array.from($('#thanks-rows').children).map((row) => ({
+    name: row.querySelector('[data-f="name"]').value.trim(),
+    role: row.querySelector('[data-f="role"]').value.trim(),
+  })).filter((n) => n.name);
+  const body = {
+    title: f.title.value.trim(), micro: f.micro.value.trim(), prefix: f.prefix.value.trim(),
+    names, dedication: { name: f.dedName.value.trim(), role: f.dedRole.value.trim() },
+  };
+  try {
+    const j = await api('/admin/api/thanks', body);
+    thanksDoc = j.doc;
+    paintThanks();
+    msg('感谢名单已保存（' + j.count + ' 位）；前台刷新页面即可看到');
+  } catch (e) { msg('保存失败：' + e.message, true); }
+});
 
 $('#login-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
