@@ -23,9 +23,10 @@
   --line:#cfcdc7; --block:#141414; --on-block:#fff; --block-sub:#a9a8a3; --tag:#e4e2dc;
   --glow:#ffffff; --scan:#ffffff2e; --bar-empty:#d8d6cf; --ok:#3f7d12;
   --orange:#f07d1a; --lime:#9ee03a; --red:#d8432f; --amber:#e3a21a; --shadow:#1414140f;
-  --code:Bahnschrift,"DIN Alternate","Roboto Condensed","Arial Narrow",var(--mono);
-  --mono:"Cascadia Mono",Consolas,"SFMono-Regular",monospace;
-  --sans:"Segoe UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+  /* 字体栈与参考站完全一致（无外链字体，全系统字体） */
+  --code:Bahnschrift,"DIN Alternate","Roboto Condensed","Arial Narrow","Segoe UI",sans-serif;
+  --mono:Bahnschrift,"DIN Alternate","Roboto Condensed","Arial Narrow","Segoe UI",sans-serif;
+  --sans:"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
 }
 /* 兼容旧变量名（内部已有规则引用），统一指向参考站色板 */
 :root{
