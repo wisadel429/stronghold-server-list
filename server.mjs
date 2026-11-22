@@ -15,6 +15,7 @@ import https from 'node:https';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -305,6 +306,42 @@ function rowFromInput(b) {
   };
 }
 
+/** 跑一条命令，返回 { code, out } */
+function run(cmd, args, cwd) {
+  return new Promise((resolve) => {
+    execFile(cmd, args, { cwd, timeout: 60000, windowsHide: true }, (err, stdout, stderr) => {
+      resolve({ code: err ? (err.code || 1) : 0, out: `${stdout || ''}${stderr || ''}`.trim().slice(-2000) });
+    });
+  });
+}
+
+/**
+ * 自更新：git pull --ff-only；如果 server.mjs / package.json 变了就退出让 systemd 重启。
+ * 只执行固定命令，不接受任何外部传入的参数 —— 不是通用远程执行。
+ */
+async function deploySelf() {
+  if (!fs.existsSync(path.join(HERE, '.git'))) {
+    return { ok: false, error: '这个目录不是 git 仓库，无法自更新' };
+  }
+  const before = (await run('git', ['rev-parse', 'HEAD'], HERE)).out;
+  // 显式指定 origin + 当前分支：不依赖本地的 upstream 跟踪配置
+  const branch = (await run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], HERE)).out.trim() || 'main';
+  const pull = await run('git', ['pull', '--ff-only', 'origin', branch], HERE);
+  const after = (await run('git', ['rev-parse', 'HEAD'], HERE)).out;
+  const changed = before && after && before !== after
+    ? (await run('git', ['diff', '--name-only', before, after], HERE)).out.split('\n').filter(Boolean)
+    : [];
+  const needRestart = changed.some((f) => f === 'server.mjs' || f === 'package.json');
+  return {
+    ok: pull.code === 0,
+    before: before.slice(0, 8),
+    after: after.slice(0, 8),
+    changed,
+    restarted: needRestart,
+    out: pull.out,
+  };
+}
+
 async function handleAdmin(req, res, url) {
   // 登录
   if (url.pathname === '/admin/login' && req.method === 'POST') {
@@ -319,6 +356,17 @@ async function handleAdmin(req, res, url) {
   if (!authed(req)) return json(res, 401, { error: '未登录' });
 
   if (url.pathname === '/admin/api/list') return json(res, 200, serversPayload(true));
+
+  // 自更新（业主 2026-11-22：以后改代码不用再手工 git pull）
+  if (url.pathname === '/admin/api/deploy' && req.method === 'POST') {
+    const r = await deploySelf();
+    json(res, r.ok ? 200 : 500, r);
+    if (r.restarted) {
+      log('自更新：server.mjs 有变化，2 秒后重启进程');
+      setTimeout(() => process.exit(0), 2000);   // systemd Restart=always 会拉起来
+    }
+    return;
+  }
 
   if (url.pathname === '/admin/api/save' && req.method === 'POST') {
     const row = rowFromInput(JSON.parse((await readBody(req)) || '{}'));

@@ -52,6 +52,7 @@ footer{margin-top:22px;padding-top:12px;border-top:1px solid var(--line);color:v
       <div class="sub">改动直接写回 servers.json 并立即重新探测</div>
     </div>
     <div style="display:flex;gap:8px">
+      <button class="btn" id="btnDeploy" title="服务器上执行 git pull，代码有变化时自动重启">更新到最新版</button>
       <button class="btn" id="btnReload">刷新状态</button>
       <button class="btn btn--primary" id="btnNew">＋ 新增服务器</button>
     </div>
@@ -156,6 +157,25 @@ $('btnLogin').onclick = async () => {
 $('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnLogin').click(); });
 
 $('btnReload').onclick = () => load().catch((e) => say(e.message, true));
+
+$('btnDeploy').onclick = async () => {
+  if (!confirm('在服务器上执行 git pull？如果 server.mjs 有变化会自动重启服务（约 3 秒）。')) return;
+  const btn = $('btnDeploy');
+  btn.disabled = true;
+  btn.textContent = '更新中…';
+  try {
+    const r = await api('/admin/api/deploy', {});
+    const files = (r.changed || []).join('、') || '（无变化）';
+    say(`更新完成 ${r.before || '?'} → ${r.after || '?'} · 变更：${files}${r.restarted ? ' · 服务重启中…' : ''}`);
+    if (r.restarted) setTimeout(() => location.reload(), 5000);
+    else await load();
+  } catch (e) {
+    say('更新失败：' + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '更新到最新版';
+  }
+};
 
 $('btnNew').onclick = async () => {
   const name = prompt('新服务器名称（例如：十五服）');
