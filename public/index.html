@@ -44,6 +44,16 @@ h1{margin:0;font-size:22px;letter-spacing:.06em;font-weight:800}
 .search input{width:210px;padding:6px 10px;border-radius:7px;border:1px solid var(--line2);
   background:#080d0a;color:var(--text);font:12.5px/1.4 var(--sans);outline:none}
 .search input:focus{border-color:rgba(53,208,127,.6)}
+/* 刷新按钮（业主 2026-11-22）：点击转圈 → 「已刷新」→ 复位，并有 toast */
+.refresh{height:34px;padding:0 12px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);
+  color:var(--mut);font:12.5px/1 var(--sans);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.refresh:hover{border-color:var(--green);color:var(--text)}
+.refresh:disabled{cursor:default}
+.refresh .ico{display:inline-block;font-size:13px;line-height:1}
+.refresh.is-busy{color:var(--mint);border-color:rgba(53,208,127,.6)}
+.refresh.is-busy .ico{animation:spin .8s linear infinite}
+.refresh.is-done{color:var(--mint);border-color:rgba(53,208,127,.75);background:rgba(53,208,127,.12)}
+@keyframes spin{to{transform:rotate(360deg)}}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,392px),1fr));gap:14px;margin-top:16px}
 .card{border:1px solid var(--line);border-radius:10px;background:linear-gradient(180deg,rgba(16,24,18,.9),rgba(9,14,11,.92));
   padding:14px 16px 12px;position:relative;overflow:hidden}
@@ -78,7 +88,13 @@ h1{margin:0;font-size:22px;letter-spacing:.06em;font-weight:800}
 .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .tag{font-size:10.5px;padding:2px 7px;border-radius:999px;border:1px solid var(--line2);color:var(--mut)}
 .notes{margin-top:9px;font-size:11.5px;color:var(--dim);line-height:1.5;white-space:pre-wrap}
-.spark{margin-top:10px;display:block;width:100%;height:34px}
+/* 24 小时走势：带边框、网格线与时间标尺（业主 2026-11-22） */
+.chart{position:relative;margin-top:10px;padding:15px 8px 5px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.015)}
+.chart .spark{display:block;width:100%;height:34px;margin:0}
+.chart__cap{position:absolute;right:9px;top:5px;font:9.5px/1 var(--mono);color:var(--dim);letter-spacing:.06em}
+.chart__axis{display:flex;justify-content:space-between;margin-top:5px;font:9.5px/1 var(--mono);color:var(--dim);letter-spacing:.04em}
+.chart--empty{margin-top:10px;padding:15px 8px;text-align:center;font:11.5px/1.4 var(--sans);color:var(--dim);
+  border:1px dashed var(--line2);border-radius:8px}
 .empty{padding:60px 0;text-align:center;color:var(--dim)}
 footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);color:var(--dim);
   font-size:11.5px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
@@ -87,7 +103,8 @@ footer b{color:var(--mut);font-weight:400}
   .shell{padding:18px 14px 30px}
   .grid{grid-template-columns:1fr}
   .search{margin-left:0;width:100%}
-  .search input{width:100%}
+  .search input{width:auto;flex:1 1 auto;min-width:0}
+  .refresh{flex:0 0 auto}
 }
 
 /* ---- 手机适配（业主 2026-11-22）---- */
@@ -106,6 +123,7 @@ footer b{color:var(--mut);font-weight:400}
   .filters{gap:6px;margin:14px 0 2px}
   .chip{padding:7px 13px;font-size:12.5px}
   .search input{height:38px;font-size:14px;border-radius:8px}
+  .refresh{height:38px;padding:0 13px;font-size:13px}
   .grid{gap:12px;margin-top:12px}
   .card{padding:13px 14px 12px;border-radius:12px}
   .card__title{font-size:16px}
@@ -119,7 +137,10 @@ footer b{color:var(--mut);font-weight:400}
   /* 手指点击目标至少 42px（Apple HIG / Material 的最小值都在 44 附近） */
   .card__acts{gap:10px;margin-top:12px}
   .card__acts button{flex:1 1 0;height:42px;font-size:14px;border-radius:9px}
-  .spark{height:30px;margin-top:8px}
+  .spark{height:30px}
+  .chart{padding:14px 7px 4px}
+  .chart__cap{font-size:9px;right:7px;top:4px}
+  .chart__axis{font-size:9px}
   footer{flex-direction:column;gap:5px;font-size:11px;margin-top:20px;padding-top:12px}
   #toast{left:13px;right:13px;width:auto;transform:translateY(12px);text-align:center;
     font-size:13px;padding:11px 14px;bottom:calc(16px + env(safe-area-inset-bottom))}
@@ -155,7 +176,12 @@ footer b{color:var(--mut);font-weight:400}
     <div class="chip" data-f="online">在线</div>
     <div class="chip" data-f="offline">离线</div>
     <div class="chip" data-f="busy">有玩家</div>
-    <div class="search"><input id="q" placeholder="搜索服名 / 维护者 / 标签…" autocomplete="off" /></div>
+    <div class="search">
+      <input id="q" placeholder="搜索服名 / 维护者 / 标签…" autocomplete="off" />
+      <button type="button" class="refresh" id="refreshBtn" title="立即刷新数据">
+        <span class="ico" aria-hidden="true">↻</span><span id="refreshText">刷新</span>
+      </button>
+    </div>
   </div>
 
   <div class="grid" id="grid"><div class="empty">正在读取…</div></div>
@@ -173,26 +199,39 @@ const state = { items: [], filter: 'all', q: '' };
 
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-/** 24 小时走势 → 内联 SVG 折线（空值断开） */
+/** 24 小时走势 → 带边框/网格线/时间标尺的折线图（空值断开） */
 function sparkline(points) {
-  const w = 360, h = 34;
-  if (!points || !points.length) return '';
-  const vals = points.map((p) => p[1]);
-  const known = vals.filter((v) => v != null);
-  const max = Math.max(1, ...known);
-  const step = w / Math.max(1, points.length - 1);
+  const w = 360, h = 40;
+  const pts = Array.isArray(points) ? points : [];
+  const known = pts.filter((p) => p[1] != null);
+  if (!pts.length || !known.length) {
+    return '<div class="chart--empty">暂无 24 小时走势（刚接入或一直探测失败）</div>';
+  }
+  const max = Math.max(1, ...known.map((p) => p[1]));
+  const step = w / Math.max(1, pts.length - 1);
   let d = '';
   let pen = false;
-  points.forEach((p, i) => {
+  pts.forEach((p, i) => {
     if (p[1] == null) { pen = false; return; }
     const x = (i * step).toFixed(1);
-    const y = (h - 3 - (p[1] / max) * (h - 6)).toFixed(1);
+    const y = (h - 4 - (p[1] / max) * (h - 8)).toFixed(1);
     d += (pen ? 'L' : 'M') + x + ',' + y;
     pen = true;
   });
-  return '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">' +
-    '<path d="' + d + '" fill="none" stroke="rgba(53,208,127,.85)" stroke-width="1.6" stroke-linejoin="round"/>' +
-    '</svg>';
+  const last = known[known.length - 1][1];
+  const grid = [0.25, 0.5, 0.75].map((k) =>
+    '<line x1="0" y1="' + (h * k).toFixed(1) + '" x2="' + w + '" y2="' + (h * k).toFixed(1) +
+    '" stroke="rgba(255,255,255,.06)" stroke-width="1" vector-effect="non-scaling-stroke"/>').join('');
+  return '<div class="chart">' +
+    '<div class="chart__cap">峰值 ' + max + ' · 现在 ' + last + '</div>' +
+    '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" role="img" ' +
+      'aria-label="最近 24 小时在线人数走势，峰值 ' + max + '，当前 ' + last + '">' +
+      grid +
+      '<path d="' + d + '" fill="none" stroke="rgba(53,208,127,.9)" stroke-width="1.6" ' +
+        'stroke-linejoin="round" vector-effect="non-scaling-stroke"/>' +
+    '</svg>' +
+    '<div class="chart__axis"><span>24 小时前</span><span>12 小时前</span><span>现在</span></div>' +
+  '</div>';
 }
 
 function uptimeText(v) { return v == null ? '—' : v.toFixed(1) + '%'; }
@@ -268,8 +307,10 @@ async function load() {
     state.stamp = stamp;
     paintStamp();
     render();
+    return true;
   } catch (e) {
     $('grid').innerHTML = '<div class="empty">读取失败：' + esc(e.message) + '</div>';
+    return false;
   }
 }
 
@@ -290,6 +331,35 @@ document.querySelectorAll('.chip').forEach((el) => {
   };
 });
 $('q').oninput = (e) => { state.q = e.target.value.trim(); render(); };
+
+// 手动刷新（业主 2026-11-22）：转圈 → 「已刷新」→ 复位；失败也给反馈
+$('refreshBtn').onclick = async () => {
+  const btn = $('refreshBtn');
+  const txt = $('refreshText');
+  if (btn.classList.contains('is-busy')) return;
+  btn.classList.add('is-busy');
+  btn.classList.remove('is-done');
+  btn.disabled = true;
+  txt.textContent = '刷新中';
+  const t0 = performance.now();
+  const ok = await load();
+  // 至少转 400ms，否则太快看不到反馈
+  const wait = Math.max(0, 400 - (performance.now() - t0));
+  if (wait) await new Promise((r) => setTimeout(r, wait));
+  btn.classList.remove('is-busy');
+  btn.disabled = false;
+  if (ok) {
+    btn.classList.add('is-done');
+    txt.textContent = '已刷新';
+    const sec = state.stamp ? Math.max(0, Math.round((Date.now() - state.stamp) / 1000)) : 0;
+    toast(sec <= 2 ? '数据刚更新（' + sec + ' 秒前）' : '已取到最新数据（数据 ' + (sec < 60 ? sec + ' 秒前' : Math.round(sec / 60) + ' 分钟前') + '）');
+    setTimeout(() => { btn.classList.remove('is-done'); txt.textContent = '刷新'; }, 1600);
+  } else {
+    txt.textContent = '刷新失败';
+    toast('刷新失败，请检查网络');
+    setTimeout(() => { txt.textContent = '刷新'; }, 1800);
+  }
+};
 
 // ---- 卡片操作：进入服务器 / 复制链接（业主 2026-11-22：不再直接显示网址）----
 function toast(text) {
