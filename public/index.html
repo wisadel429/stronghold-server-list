@@ -58,8 +58,16 @@ h1{margin:0;font-size:22px;letter-spacing:.06em;font-weight:800}
 .card.online .badge{color:var(--green)}
 .card.offline .badge{color:var(--red)}
 .meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;font-size:11.5px;color:var(--mut)}
-.meta a{color:var(--mint);text-decoration:none;border-bottom:1px dotted rgba(123,240,176,.35);word-break:break-all}
-.meta a:hover{color:#fff}
+.card__acts{display:flex;gap:8px;margin-top:11px}
+.card__acts button{height:30px;padding:0 14px;border-radius:7px;cursor:pointer;font:12.5px/1 var(--sans);transition:filter .15s}
+.card__acts button:hover{filter:brightness(1.18)}
+.card__acts .go{border:1px solid rgba(53,208,127,.75);background:rgba(53,208,127,.16);color:var(--mint);font-weight:700}
+.card__acts .go:disabled{border-color:var(--line2);background:transparent;color:var(--dim);font-weight:400;cursor:default;filter:none}
+.card__acts .copy{border:1px solid var(--line2);background:var(--panel2);color:var(--mut)}
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(12px);opacity:0;
+  transition:opacity .18s,transform .18s;background:#0f1a14;border:1px solid rgba(53,208,127,.55);
+  color:var(--mint);padding:9px 18px;border-radius:9px;font-size:12.5px;pointer-events:none;z-index:99}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 .kv{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid rgba(29,42,34,.8)}
 .kv div{min-width:0}
 .kv b{display:block;font:700 16px/1.1 var(--mono);color:var(--text)}
@@ -111,6 +119,7 @@ footer b{color:var(--mut);font-weight:400}
     <span>数据来自各服 <b>/healthz</b> · 探测源 <b id="src">—</b> · 超时 8 秒视为离线 · 走势为最近 24 小时</span>
     <span>更新于 <b id="updated">–</b></span>
   </footer>
+  <div id="toast"></div>
 </div>
 
 <script>
@@ -179,7 +188,6 @@ function render() {
       '<div class="meta">' +
         (s.region ? '<span>' + esc(s.region) + '</span>' : '') +
         (s.maintainer ? '<span>维护 · ' + esc(s.maintainer) + '</span>' : '') +
-        '<a href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.url) + '</a>' +
       '</div>' +
       '<div class="kv">' +
         '<div><b class="' + (on && st.online != null ? '' : 'dim') + '">' + (st.online == null ? '—' : st.online) + '</b><span>在线玩家</span></div>' +
@@ -190,6 +198,10 @@ function render() {
       ((s.tags && s.tags.length) ? '<div class="tags">' + s.tags.map((t) => '<span class="tag">' + esc(t) + '</span>').join('') + '</div>' : '') +
       (s.notes ? '<div class="notes">' + esc(s.notes) + '</div>' : '') +
       (!on && s.error ? '<div class="notes" style="color:#b98a86">探测失败：' + esc(s.error) + '</div>' : '') +
+      '<div class="card__acts">' +
+        '<button type="button" class="go" data-go="' + esc(s.url) + '"' + (on ? '' : ' disabled') + '>' + (on ? '进入服务器' : '暂不可用') + '</button>' +
+        '<button type="button" class="copy" data-copy="' + esc(s.url) + '">复制链接</button>' +
+      '</div>' +
       sparkline(s.history24h) +
       '</div>';
   }).join('');
@@ -219,6 +231,48 @@ document.querySelectorAll('.chip').forEach((el) => {
   };
 });
 $('q').oninput = (e) => { state.q = e.target.value.trim(); render(); };
+
+// ---- 卡片操作：进入服务器 / 复制链接（业主 2026-11-22：不再直接显示网址）----
+function toast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.classList.add('on');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove('on'), 1600);
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch { return false; }
+  }
+}
+
+$('grid').addEventListener('click', async (ev) => {
+  const btn = ev.target && ev.target.closest ? ev.target.closest('button[data-go],button[data-copy]') : null;
+  if (!btn) return;
+  const go = btn.getAttribute('data-go');
+  if (go) {
+    if (btn.disabled) return;
+    window.open(go, '_blank', 'noopener');
+    return;
+  }
+  const url = btn.getAttribute('data-copy');
+  const ok = await copyText(url);
+  toast(ok ? '链接已复制，去粘贴给朋友吧' : '复制失败，请长按/右键手动复制');
+});
 
 load();
 setInterval(load, 15000);
