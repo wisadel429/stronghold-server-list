@@ -947,7 +947,7 @@ function paintThanks(data) {
 async function loadThanks() {
   if (!$('thanksRail')) return;
   let data = null;
-  try { data = await (await fetch('/data/thanks.json', { cache: 'force-cache' })).json(); } catch { /* ignore */ }
+  try { data = await (await fetch('/thanks.json', { cache: 'force-cache' })).json(); } catch { /* ignore */ }
   if (!data || !Array.isArray(data.names) || !data.names.length) {
     // 本地没有就直接取上游
     try { data = await (await fetch(THANKS_URL, { cache: 'no-store', signal: AbortSignal.timeout(10000) })).json(); } catch { return; }

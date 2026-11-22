@@ -1,8 +1,7 @@
-# 运行时数据（每站的走势与可用率，各机不同）
+﻿# 运行时数据（每站的走势与可用率，各机不同）
 data/
 _run.out.log
 _run.err.log
-preview.png
 
 # 依赖（本项目零依赖，留着以防以后加）
 node_modules/
