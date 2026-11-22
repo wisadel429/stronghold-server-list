@@ -108,7 +108,7 @@ footer b{color:var(--mut);font-weight:400}
   <div class="grid" id="grid"><div class="empty">正在读取…</div></div>
 
   <footer>
-    <span>数据来自各服 <b>/healthz</b> · 超时 8 秒视为离线 · 走势为最近 24 小时</span>
+    <span>数据来自各服 <b>/healthz</b> · 探测源 <b id="src">—</b> · 超时 8 秒视为离线 · 走势为最近 24 小时</span>
     <span>更新于 <b id="updated">–</b></span>
   </footer>
 </div>
@@ -189,6 +189,7 @@ function render() {
       '</div>' +
       ((s.tags && s.tags.length) ? '<div class="tags">' + s.tags.map((t) => '<span class="tag">' + esc(t) + '</span>').join('') + '</div>' : '') +
       (s.notes ? '<div class="notes">' + esc(s.notes) + '</div>' : '') +
+      (!on && s.error ? '<div class="notes" style="color:#b98a86">探测失败：' + esc(s.error) + '</div>' : '') +
       sparkline(s.history24h) +
       '</div>';
   }).join('');
@@ -200,7 +201,9 @@ async function load() {
     const j = await r.json();
     state.items = j.servers || [];
     $('pollSec').textContent = j.pollSeconds || 30;
-    $('updated').textContent = new Date(j.serverTime || Date.now()).toLocaleTimeString();
+    $('src').textContent = j.probeSource === 'cn' ? '国内节点' : (j.probeSource === 'local' ? '本机' : '—');
+    const stamp = j.lastReportAt || j.serverTime || Date.now();
+    $('updated').textContent = new Date(stamp).toLocaleTimeString();
     render();
   } catch (e) {
     $('grid').innerHTML = '<div class="empty">读取失败：' + esc(e.message) + '</div>';

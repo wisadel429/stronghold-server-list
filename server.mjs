@@ -31,6 +31,14 @@ const UA = 'StrongholdList/1.0 (+server list overview)';
 /** 管理页口令：环境变量优先；没设就每次启动随机生成（会打到日志里提醒） */
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || randomToken(6);
 const ADMIN_RANDOM = !process.env.ADMIN_PASSWORD;
+
+/**
+ * 上报令牌（业主 2026-11-22 方案 A）：探测由**国内节点**做，列表站只负责展示。
+ * 配了 REPORT_TOKEN 就默认关闭本机探测（可用 LOCAL_PROBE=1 强制同时开）。
+ */
+const REPORT_TOKEN = process.env.REPORT_TOKEN || '';
+const LOCAL_PROBE = process.env.LOCAL_PROBE ? process.env.LOCAL_PROBE === '1' : !REPORT_TOKEN;
+const reportState = { lastAt: 0, count: 0, source: '' };
 /** 登录后发的会话令牌（内存表，12 小时过期；重启失效 → 重新登录即可） */
 const sessions = new Map();
 const SESSION_TTL = 12 * 3600_000;
@@ -180,30 +188,37 @@ function bumpDay(s, ok, ts) {
   s.uptime7d = t7 ? Math.round((ok7 / t7) * 1000) / 10 : null;
 }
 
-async function pollOne(srv) {
+/** 把一次探测结果落到状态里（本机探测与国内上报共用同一条路径） */
+function applyOutcome(srv, outcome, now) {
   const s = ensureState(srv.id);
-  const r = await probe(srv);
-  const now = Date.now();
   s.checkedAt = now;
-  s.latencyMs = r.ok ? r.latencyMs : null;
-  s.error = r.ok ? null : r.error;
-  if (r.ok) {
-    s.status = normalizeHealth(r.json);
-    s.status.latencyMs = r.latencyMs;
+  s.source = outcome.source || 'local';
+  s.latencyMs = outcome.ok ? outcome.latencyMs : null;
+  s.error = outcome.ok ? null : (outcome.error || 'unreachable');
+  if (outcome.ok) {
+    s.status = normalizeHealth(outcome.health || {});
+    s.status.latencyMs = outcome.latencyMs;
     s.status.certificateWarning = false;
   } else {
     s.status = { state: 'unreachable', online: null, latencyMs: null };
   }
   // 只按"在线/离线"记点，人数单独存，避免走势被空值打断
-  const online = r.ok && s.status.online != null ? s.status.online : (r.ok ? 0 : null);
+  const online = outcome.ok ? (s.status.online == null ? 0 : s.status.online) : null;
   pushPoint(s, now, online);
-  bumpDay(s, r.ok, now);
+  bumpDay(s, outcome.ok, now);
   const okPoints = s.history24h.filter((p) => p[1] != null).length;
   s.uptime24h = s.history24h.length ? Math.round((okPoints / s.history24h.length) * 1000) / 10 : null;
+  return s;
+}
+
+async function pollOne(srv) {
+  const r = await probe(srv);
+  applyOutcome(srv, { ok: r.ok, latencyMs: r.latencyMs, health: r.json, error: r.error, source: 'local' }, Date.now());
 }
 
 let polling = false;
 async function pollAll() {
+  if (!LOCAL_PROBE) return;          // 方案 A：由国内节点上报时，本机不再探测
   if (polling) return;
   polling = true;
   const started = Date.now();
@@ -342,6 +357,44 @@ async function handleAdmin(req, res, url) {
   return json(res, 404, { error: 'not found' });
 }
 
+// ---------------------------------------------------------------- 上报（国内探测节点 → 列表站）
+
+/**
+ * POST /api/report
+ * { token, source?, results:[{ id, ok, latencyMs, health?, error? }] }
+ * 由国内节点（游戏服）定时上报；列表站只负责落库与展示。
+ */
+async function handleReport(req, res) {
+  if (!REPORT_TOKEN) return json(res, 503, { error: '未配置 REPORT_TOKEN，拒绝接收上报' });
+  const body = JSON.parse((await readBody(req)) || '{}');
+  const token = String(body.token || req.headers['x-report-token'] || '');
+  if (token !== REPORT_TOKEN) return json(res, 401, { error: 'token 不对' });
+  const results = Array.isArray(body.results) ? body.results : [];
+  const now = Date.now();
+  const source = String(body.source || 'cn').slice(0, 16);
+  let applied = 0;
+  const unknown = [];
+  for (const r of results) {
+    if (!r || typeof r.id !== 'string') continue;
+    const srv = config.servers.find((s) => s.id === r.id);
+    if (!srv) { unknown.push(r.id); continue; }
+    if (srv.enabled === false) continue;
+    applyOutcome(srv, {
+      ok: !!r.ok,
+      latencyMs: Number(r.latencyMs) || null,
+      health: r.health || {},
+      error: r.error,
+      source,
+    }, now);
+    applied++;
+  }
+  reportState.lastAt = now;
+  reportState.count += applied;
+  reportState.source = source;
+  saveState();
+  return json(res, 200, { ok: true, applied, unknown: unknown.slice(0, 10), servers: config.servers.length });
+}
+
 // ---------------------------------------------------------------- HTTP
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png' };
@@ -370,11 +423,15 @@ function serversPayload(all = false) {
   return {
     pollSeconds: Math.round(POLL_MS / 1000),
     serverTime: Date.now(),
+    probeSource: reportState.lastAt ? (reportState.source || 'cn') : (LOCAL_PROBE ? 'local' : ''),
+    lastReportAt: reportState.lastAt || 0,
     servers: list.map((srv) => {
       const s = ensureState(srv.id);
       return {
         ...srv,
         status: s.status,
+        error: s.error || null,
+        source: s.source || null,
         checkedAt: s.checkedAt,
         uptime24h: s.uptime24h,
         uptime7d: s.uptime7d,
@@ -391,6 +448,9 @@ const server = http.createServer((req, res) => {
     return json(res, 200, { ok: true, service: 'stronghold-server-list', servers: config.servers.length, at: Date.now() });
   }
   if (url.pathname === '/admin') return serveStatic(res, '/admin.html');
+  if (url.pathname === '/api/report' && req.method === 'POST') {
+    return handleReport(req, res).catch((e) => json(res, 400, { error: e.message }));
+  }
   if (url.pathname === '/admin/login' || url.pathname.startsWith('/admin/api/')) {
     return handleAdmin(req, res, url).catch((e) => json(res, 400, { error: e.message }));
   }
@@ -404,6 +464,9 @@ loadState();
 server.listen(PORT, HOST, () => {
   log(`列表站已启动 http://${HOST}:${PORT}（轮询 ${config.servers.length} 个服 / ${POLL_MS}ms）`);
   log(`管理页 /admin${ADMIN_RANDOM ? ' · 本次随机口令：' + ADMIN_PASSWORD + '（建议设置 ADMIN_PASSWORD 固定下来）' : ' · 口令来自 ADMIN_PASSWORD'}`);
+  log(LOCAL_PROBE
+    ? `探测：本机（每 ${POLL_MS}ms）`
+    : `探测：**外部上报**（REPORT_TOKEN 已配置，本机不探测；上报地址 POST /api/report）`);
   pollAll();
   setInterval(pollAll, POLL_MS).unref?.();
 });

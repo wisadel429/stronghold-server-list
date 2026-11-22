@@ -16,6 +16,54 @@
 | `deploy/stronghold-list.service` | systemd 单元（裸机 / 1Panel 都用得上） |
 | `data/state.json` | 运行时生成：每站最近 24h 走势 + 7 天可用率 |
 
+## 探测架构（方案 A：探测与展示分离）
+
+```
+国内节点（agent.mjs，例如游戏服）
+   │  每 30s：拉 /api/servers → 逐个探 /healthz → POST /api/report
+   ▼
+列表站（香港，只负责落库 + 展示）
+   ▼
+https://mon3tr.fun  （Cloudflare 隧道 → 源站 80）
+```
+
+**为什么这样拆**：香港机房直连国内"裸 IP:端口"经常不通（实测 10/14 误报离线），
+而国内节点探测最准。所以列表站自身**不做探测**（配了 `REPORT_TOKEN` 后自动关闭）。
+
+### 列表站侧
+
+```bash
+# /etc/systemd/system/stronghold-list.service 里加一行
+Environment=REPORT_TOKEN=你们的口令
+```
+改完 `systemctl daemon-reload && systemctl restart stronghold-list`，日志会显示：
+`探测：**外部上报**（REPORT_TOKEN 已配置，本机不探测）`
+
+### 国内节点侧（Windows 示例）
+
+```powershell
+Invoke-WebRequest -UseBasicParsing https://mon3tr.fun/agent.mjs -OutFile C:\stronghold\agent.mjs
+$env:LIST_URL='https://mon3tr.fun'
+$env:REPORT_TOKEN='你们的口令'
+node C:\stronghold\agent.mjs
+```
+
+开机自启（计划任务）：
+
+```powershell
+schtasks /Create /TN StrongholdListAgent /SC ONSTART /RU SYSTEM /RL HIGHEST /F /TR "cmd /c set LIST_URL=https://mon3tr.fun&& set REPORT_TOKEN=你们的口令&& \"C:\Program Files\nodejs\node.exe\" C:\stronghold\agent.mjs >> C:\stronghold\agent.log 2>&1"
+```
+
+> 建议写个 `agent.cmd` 把环境变量写进去，计划任务只调它，免得出引号问题。
+
+**上报接口**（供排错）：
+
+```bash
+curl -s -X POST https://mon3tr.fun/api/report \
+  -H "content-type: application/json" \
+  -d '{"token":"XXX","source":"cn","results":[{"id":"server-1","ok":true,"latencyMs":42,"health":{"ok":true,"app":"0.3.3-Yuan","online":3,"rooms":1}}]}'
+```
+
 ## 环境变量
 
 | 变量 | 默认 | 说明 |
