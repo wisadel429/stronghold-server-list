@@ -2,8 +2,9 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#070b09" />
 <title>卫戍协议 · 服务器列表</title>
 <style>
 :root{
@@ -42,7 +43,7 @@ h1{margin:0;font-size:22px;letter-spacing:.06em;font-weight:800}
 .search input{width:210px;padding:6px 10px;border-radius:7px;border:1px solid var(--line2);
   background:#080d0a;color:var(--text);font:12.5px/1.4 var(--sans);outline:none}
 .search input:focus{border-color:rgba(53,208,127,.6)}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(392px,1fr));gap:14px;margin-top:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,392px),1fr));gap:14px;margin-top:16px}
 .card{border:1px solid var(--line);border-radius:10px;background:linear-gradient(180deg,rgba(16,24,18,.9),rgba(9,14,11,.92));
   padding:14px 16px 12px;position:relative;overflow:hidden}
 .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--dim)}
@@ -86,6 +87,49 @@ footer b{color:var(--mut);font-weight:400}
   .grid{grid-template-columns:1fr}
   .search{margin-left:0;width:100%}
   .search input{width:100%}
+}
+
+/* ---- 手机适配（业主 2026-11-22）---- */
+@media (max-width:820px){
+  body{-webkit-tap-highlight-color:transparent}
+  .shell{padding:16px 13px calc(26px + env(safe-area-inset-bottom))}
+  header{gap:12px;padding-bottom:12px;align-items:flex-start}
+  h1{font-size:19px;letter-spacing:.04em}
+  .eyebrow{font-size:9px;letter-spacing:.18em;margin-bottom:6px}
+  .sub{font-size:10.5px;letter-spacing:.1em;margin-top:4px}
+  /* 四个统计挤到一行会换行难看：改成等分的 4 格，数字缩小但更整齐 */
+  .stats{gap:6px;width:100%;display:grid;grid-template-columns:repeat(4,1fr);margin-top:2px}
+  .stat{min-width:0}
+  .stat b{font-size:17px}
+  .stat span{font-size:9px;letter-spacing:.08em;margin-top:2px;white-space:nowrap}
+  .filters{gap:6px;margin:14px 0 2px}
+  .chip{padding:7px 13px;font-size:12.5px}
+  .search input{height:38px;font-size:14px;border-radius:8px}
+  .grid{gap:12px;margin-top:12px}
+  .card{padding:13px 14px 12px;border-radius:12px}
+  .card__title{font-size:16px}
+  .meta{font-size:11.5px;gap:8px}
+  .kv{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px;padding-top:9px}
+  .kv b{font-size:17px}
+  .kv span{font-size:9.5px}
+  .tags{gap:5px;margin-top:9px}
+  .tag{font-size:10.5px;padding:3px 8px}
+  .notes{font-size:12.5px;line-height:1.55;margin-top:8px}
+  /* 手指点击目标至少 42px（Apple HIG / Material 的最小值都在 44 附近） */
+  .card__acts{gap:10px;margin-top:12px}
+  .card__acts button{flex:1 1 0;height:42px;font-size:14px;border-radius:9px}
+  .spark{height:30px;margin-top:8px}
+  footer{flex-direction:column;gap:5px;font-size:11px;margin-top:20px;padding-top:12px}
+  #toast{left:13px;right:13px;width:auto;transform:translateY(12px);text-align:center;
+    font-size:13px;padding:11px 14px;bottom:calc(16px + env(safe-area-inset-bottom))}
+  #toast.on{transform:translateY(0)}
+}
+
+/* 更窄（iPhone SE / 小屏安卓） */
+@media (max-width:380px){
+  h1{font-size:17px}
+  .stat b{font-size:15px}
+  .card__acts button{height:44px;font-size:13.5px}
 }
 </style>
 </head>
@@ -198,13 +242,12 @@ function render() {
       ((s.tags && s.tags.length) ? '<div class="tags">' + s.tags.map((t) => '<span class="tag">' + esc(t) + '</span>').join('') + '</div>' : '') +
       (s.notes ? '<div class="notes">' + esc(s.notes) + '</div>' : '') +
       (!on && s.error ? '<div class="notes" style="color:#b98a86">探测失败：' + esc(s.error) + '</div>' : '') +
+      sparkline(s.history24h) +
       '<div class="card__acts">' +
         '<button type="button" class="go" data-go="' + esc(s.url) + '"' + (on ? '' : ' disabled') + '>' + (on ? '进入服务器' : '暂不可用') + '</button>' +
         '<button type="button" class="copy" data-copy="' + esc(s.url) + '">复制链接</button>' +
       '</div>' +
-      sparkline(s.history24h) +
-      '</div>';
-  }).join('');
+      '</div>';  }).join('');
 }
 
 async function load() {
