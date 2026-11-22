@@ -378,6 +378,14 @@ async function handleAdmin(req, res, url) {
     return json(res, 200, { ok: true, ttlHours: SESSION_TTL / 3600_000 });
   }
 
+  // 登出：清掉服务端会话 + 立刻让 cookie 失效（业主 2026-11-22）
+  if (url.pathname === '/admin/logout' && req.method === 'POST') {
+    const t = cookieOf(req, 'sl_admin');
+    if (t) sessions.delete(t);
+    res.setHeader('set-cookie', 'sl_admin=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax');
+    return json(res, 200, { ok: true });
+  }
+
   if (!authed(req)) return json(res, 401, { error: '未登录' });
 
   if (url.pathname === '/admin/api/list') return json(res, 200, serversPayload(true));
@@ -552,7 +560,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/vote' && req.method === 'POST') {
     return handleVote(req, res).catch((e) => json(res, 400, { error: e.message }));
   }
-  if (url.pathname === '/admin/login' || url.pathname.startsWith('/admin/api/')) {
+  if (url.pathname === '/admin/login' || url.pathname === '/admin/logout' || url.pathname.startsWith('/admin/api/')) {
     return handleAdmin(req, res, url).catch((e) => json(res, 400, { error: e.message }));
   }
   return serveStatic(res, decodeURIComponent(url.pathname));

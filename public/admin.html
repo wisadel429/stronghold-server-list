@@ -351,7 +351,15 @@ $('#login-form').addEventListener('submit', async (ev) => {
 $('#add').onclick = () => { fillForm(null); $('#editor-form').title.focus(); };
 $('#reset').onclick = () => { fillForm(null); msg('已清空表单'); };
 $('#refresh').onclick = () => load().catch((e) => msg(e.message, true));
-$('#logout').onclick = () => location.reload();
+// 真正的登出：让服务端销毁会话、清 cookie，再回到登录页
+$('#logout').onclick = async () => {
+  try { await fetch('/admin/logout', { method: 'POST' }); } catch { /* 网络失败也照样刷新 */ }
+  if (items.length) { items = []; renderRecords(); }
+  fillForm(null);
+  msg('');
+  showLogin();
+  location.reload();
+};
 
 $('#editor-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
