@@ -62,7 +62,7 @@ const SESSION_TTL = 12 * 3600_000;
 /** 24 小时走势：48 个点，每 30 分钟一个 */
 const HISTORY_POINTS = 1440;   // 分钟桶上限（24h），见 pushPoint
 /** 下发给国内上报器的探测间隔：8 秒一轮（业主 2026-11-28「频繁探测」），可用环境变量调 */
-const AGENT_INTERVAL_MS = Math.max(3000, Number(process.env.AGENT_INTERVAL_MS) || 8000);
+const AGENT_INTERVAL_MS = Math.max(3000, Number(process.env.AGENT_INTERVAL_MS) || 6000);
 const POINT_MS = 30 * 60_000;
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
