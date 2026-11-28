@@ -347,6 +347,7 @@ body.rl-ready .rl-wipe.in-hero>span{animation:rl-wipe-text .8s backwards;animati
 .rl-bars{display:grid;grid-template-columns:repeat(48,1fr);gap:1px;height:22px;margin-top:6px}
 .rl-bars i{background:var(--bar-empty);transform-origin:bottom}
 .rl-bars i.up{background:#7bc52a}
+.rl-bars i.partial{background:var(--amber)}
 .rl-bars i.down{background:var(--red)}
 .rl-bars i.none{background:var(--bar-empty)}
 .rl-hlabels{display:flex;justify-content:space-between;font-size:10px;color:var(--sub);margin-top:3px}
@@ -637,15 +638,19 @@ async function copyText(text) {
   }
 }
 
-/** 24 小时 → 48 格（不足左侧补灰） */
+/** 24 小时 → 48 格（每格 30 分钟）：绿=全在线、黄=部分可用、红=全失败、灰=无采集 */
 function barsHtml(points, label) {
   const WANT = 48;
   const pts = Array.isArray(points) ? points.slice(-WANT) : [];
   const pad = Math.max(0, WANT - pts.length);
   let html = '<i class="none"></i>'.repeat(pad);
   html += pts.map((p) => {
-    const cls = p[1] == null ? (p[2] === 0 ? 'down' : 'none') : 'up';
-    const tip = timeOf(p[0]) + ' · ' + (p[1] == null ? '未连通/未采集' : p[1] + ' 人');
+    const peak = p[1];
+    const ratio = p.length >= 3 ? p[2] : (p[1] == null ? null : 1);
+    let cls = 'none';
+    if (ratio != null) cls = ratio >= 0.99 ? 'up' : (ratio <= 0.01 ? 'down' : 'partial');
+    const tip = timeOf(p[0]) + ' · ' + (ratio == null ? '无采集'
+      : Math.round(ratio * 100) + '% 可用' + (peak != null ? ' · 峰值 ' + peak + ' 人' : ''));
     return '<i class="' + cls + '" title="' + esc(tip) + '"></i>';
   }).join('');
   return '<div class="rl-bars" role="img" aria-label="' + esc(label || '最近 24 小时在线情况') + '">' + html + '</div>';

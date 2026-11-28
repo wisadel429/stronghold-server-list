@@ -60,7 +60,9 @@ const sessions = new Map();
 const SESSION_TTL = 12 * 3600_000;
 
 /** 24 小时走势：48 个点，每 30 分钟一个 */
-const HISTORY_POINTS = 48;
+const HISTORY_POINTS = 1440;   // 分钟桶上限（24h），见 pushPoint
+/** 下发给国内上报器的探测间隔：8 秒一轮（业主 2026-11-28「频繁探测」），可用环境变量调 */
+const AGENT_INTERVAL_MS = Math.max(3000, Number(process.env.AGENT_INTERVAL_MS) || 8000);
 const POINT_MS = 30 * 60_000;
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -260,12 +262,75 @@ function normalizeHealth(json) {
   };
 }
 
+/**
+ * 历史点：**按分钟聚合**（业主 2026-11-28：国内节点要 8 秒探一次，原始点会涨到 24h≈10800 个/服）。
+ * 每个点是 [分钟起点时间戳, 该分钟峰值人数, 成功次数, 总次数]，每服最多 1440 个（正好 24h）。
+ * 老 state.json 里的 [ts, online] / [ts, online, ok] 由 normalizePoint 兼容。
+ */
+const HISTORY_MAX = 1440;
+
+function normalizePoint(p) {
+  if (!Array.isArray(p) || !p.length) return null;
+  const ts = Number(p[0]) || 0;
+  if (p.length >= 4) return [ts, p[1] == null ? null : Number(p[1]), Number(p[2]) || 0, Number(p[3]) || 0];
+  // 老格式：[ts, online] 或 [ts, online, ok]
+  const okFlag = p.length >= 3 ? (Number(p[2]) === 1 ? 1 : 0) : (p[1] == null ? 0 : 1);
+  return [ts, p[1] == null ? null : Number(p[1]), okFlag, 1];
+}
+
 function pushPoint(s, ts, online, ok) {
   if (!Array.isArray(s.history24h)) s.history24h = [];
-  s.history24h.push([ts, online, ok ? 1 : 0]);
+  else if (s.history24h.length && s.history24h[s.history24h.length - 1].length < 4) {
+    s.history24h = s.history24h.map(normalizePoint).filter(Boolean);
+  }
+  const bucket = Math.floor(ts / 60000) * 60000;
+  const last = s.history24h[s.history24h.length - 1];
+  const okNum = ok ? 1 : 0;
+  if (last && last[0] === bucket) {
+    last[1] = (online == null) ? last[1] : Math.max(Number(last[1]) || 0, Number(online) || 0);
+    last[2] += okNum;
+    last[3] += 1;
+  } else {
+    s.history24h.push([bucket, online == null ? null : Number(online) || 0, okNum, 1]);
+  }
   const cut = ts - 24 * 3600_000;
   while (s.history24h.length && s.history24h[0][0] < cut) s.history24h.shift();
-  if (s.history24h.length > HISTORY_POINTS) s.history24h = s.history24h.slice(-HISTORY_POINTS);
+  if (s.history24h.length > HISTORY_MAX) s.history24h = s.history24h.slice(-HISTORY_MAX);
+}
+
+/** 把分钟桶合并成 48 段（每段 30 分钟）→ [[ts, 峰值, 可用率 0..1 或 null]] */
+function historyBuckets(s, count = 48, spanMs = 30 * 60000) {
+  const pts = Array.isArray(s.history24h) ? s.history24h : [];
+  const now = Date.now();
+  const start = Math.floor(now / spanMs) * spanMs - (count - 1) * spanMs;
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const bStart = start + i * spanMs;
+    const bEnd = bStart + spanMs;
+    let peak = null, ok = 0, total = 0;
+    for (const p of pts) {
+      if (p[0] < bStart || p[0] >= bEnd) continue;
+      total += p[3] || 0;
+      ok += p[2] || 0;
+      if (p[1] != null) peak = peak == null ? p[1] : Math.max(peak, p[1]);
+    }
+    out.push([bStart, peak, total ? ok / total : null]);
+  }
+  return out;
+}
+
+/** 24h 可用率（按分钟桶的 ok/total 算，比按点算准） */
+function uptimeFromHistory(s) {
+  const pts = Array.isArray(s.history24h) ? s.history24h : [];
+  const now = Date.now();
+  const cut = now - 24 * 3600_000;
+  let ok = 0, total = 0;
+  for (const p of pts) {
+    if (p[0] < cut) continue;
+    total += p[3] || 0;
+    ok += p[2] || 0;
+  }
+  return total ? Math.round((ok / total) * 1000) / 10 : null;
 }
 
 /** 按天累计可用率（保留最近 7 天） */
@@ -303,8 +368,7 @@ function applyOutcome(srv, outcome, now) {
   const online = usable ? (s.status.online == null ? 0 : s.status.online) : null;
   pushPoint(s, now, online, usable);
   bumpDay(s, usable, now);
-  const okPoints = s.history24h.filter((p) => p[1] != null).length;
-  s.uptime24h = s.history24h.length ? Math.round((okPoints / s.history24h.length) * 1000) / 10 : null;
+  s.uptime24h = uptimeFromHistory(s);
   return s;
 }
 
@@ -703,6 +767,7 @@ function serversPayload(all = false) {
     probeSource: reportState.lastAt ? (reportState.source || 'cn') : (LOCAL_PROBE ? 'local' : ''),
     lastReportAt: reportState.lastAt || 0,
     refreshAt: refreshAt || 0,
+    agentIntervalMs: AGENT_INTERVAL_MS,
     servers: list.map((srv) => {
       const s = ensureState(srv.id);
       return {
@@ -713,7 +778,7 @@ function serversPayload(all = false) {
         checkedAt: s.checkedAt,
         uptime24h: s.uptime24h,
         uptime7d: s.uptime7d,
-        history24h: s.history24h,
+        history24h: historyBuckets(s),
         rating: ratingOf(srv.id),
       };
     }),
