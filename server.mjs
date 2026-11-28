@@ -44,6 +44,14 @@ const REPORT_TOKEN = process.env.REPORT_TOKEN || '';
 const LOCAL_PROBE = process.env.LOCAL_PROBE ? process.env.LOCAL_PROBE === '1' : !REPORT_TOKEN;
 const reportState = { lastAt: 0, count: 0, source: '' };
 
+/**
+ * 玩家点「刷新」时置位（业主 2026-11-28：「让玩家刷新时是真刷新」）。
+ * 列表站自己不探测（方案 A），所以这里只记一个时间戳：
+ * 国内上报器每 4 秒轮询一次 /api/servers，看到 refreshAt 比上一轮新就**立刻**探一轮并上报。
+ */
+let refreshAt = 0;
+const refreshLog = new Map();   // ip -> 上次请求时间（节流）
+
 /** 玩家评分（超大杯 / 中杯）：{ [serverId]: { large, medium } } */
 let votes = {};
 const voteLog = new Map();   // ip|id|day → kind（每人每天每服一票）
@@ -694,6 +702,7 @@ function serversPayload(all = false) {
     serverTime: Date.now(),
     probeSource: reportState.lastAt ? (reportState.source || 'cn') : (LOCAL_PROBE ? 'local' : ''),
     lastReportAt: reportState.lastAt || 0,
+    refreshAt: refreshAt || 0,
     servers: list.map((srv) => {
       const s = ensureState(srv.id);
       return {
@@ -724,6 +733,16 @@ const server = http.createServer((req, res) => {
     return json(res, 200, { ok: true, service: 'stronghold-server-list', servers: config.servers.length, at: Date.now() });
   }
   if (url.pathname === '/' || url.pathname === '/index.html') bumpStat('page', ip);
+  // 玩家点「刷新」→ 记一个时间戳，让国内上报器立刻探一轮（真刷新）
+  if (url.pathname === '/api/refresh' && req.method === 'POST') {
+    const now = Date.now();
+    const last = refreshLog.get(ip) || 0;
+    if (now - last < 2000) return json(res, 200, { ok: true, throttled: true, at: refreshAt, lastReportAt: reportState.lastAt });
+    refreshLog.set(ip, now);
+    if (refreshLog.size > 5000) refreshLog.clear();
+    refreshAt = now;
+    return json(res, 200, { ok: true, at: now, lastReportAt: reportState.lastAt });
+  }
   if (url.pathname === '/admin') return serveStatic(res, '/admin.html');
   if (url.pathname === '/api/report' && req.method === 'POST') {
     bumpStat('report', ip);

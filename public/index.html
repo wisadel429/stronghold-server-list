@@ -531,7 +531,7 @@ dialog.rl-dialog::backdrop{background:rgba(20,24,26,.42)}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const state = { items: [], filter: 'all', q: '', stamp: 0, metricsShown: false, satsBuilt: false };
+const state = { items: [], filter: 'all', q: '', stamp: 0, reportAt: 0, refreshAt: 0, metricsShown: false, satsBuilt: false };
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ── 参考站的两个小工具：打乱字符 / 数字滚动 ── */
@@ -767,6 +767,8 @@ async function load() {
     $('pollSec').textContent = j.pollSeconds || 30;
     $('src').textContent = j.probeSource === 'cn' ? '国内节点' : (j.probeSource === 'local' ? '本机' : '—');
     state.stamp = j.lastReportAt || j.serverTime || Date.now();
+    state.reportAt = j.lastReportAt || 0;
+    if (j.refreshAt) state.refreshAt = j.refreshAt;
     paintStamp();
     render();
     return true;
@@ -837,26 +839,51 @@ document.querySelectorAll('.rl-chip').forEach((el) => {  el.onclick = () => {
 });
 $('q').oninput = (e) => { state.q = e.target.value.trim(); render(); };
 
+// 真刷新（业主 2026-11-28）：不只是重新读一次本地缓存的数据，
+// 而是先通知服务器「玩家要新数据」，国内上报器看到就立刻探一轮；这里再短轮询等新结果。
 $('refreshBtn').onclick = async () => {
   const btn = $('refreshBtn');
   const txt = $('refreshText');
   if (btn.classList.contains('is-busy')) return;
   btn.classList.add('is-busy'); btn.classList.remove('is-done'); btn.disabled = true;
-  txt.textContent = '刷新中';
+  txt.textContent = '探测中';
+
+  const before = state.reportAt || 0;
   const t0 = performance.now();
-  const ok = await load();
-  const wait = Math.max(0, 400 - (performance.now() - t0));
-  if (wait) await new Promise((r) => setTimeout(r, wait));
+
+  // 1) 请求一次实时探测（失败也无所谓，退回普通刷新）
+  let asked = false;
+  try {
+    const r = await fetch('/api/refresh', { method: 'POST', cache: 'no-store' });
+    asked = r.ok;
+  } catch { /* ignore */ }
+
+  // 2) 重新读数据，并在 0.8/2.2/4/6.5 秒各再看一次，直到上报时间前进
+  const waits = [0, 800, 1400, 1800, 2500];
+  let ok = false;
+  let fresh = false;
+  for (const w of waits) {
+    if (w) await new Promise((r) => setTimeout(r, w));
+    ok = await load();
+    if (ok && state.reportAt > before) { fresh = true; break; }
+  }
+
+  const waitMin = Math.max(0, 400 - (performance.now() - t0));
+  if (waitMin) await new Promise((r) => setTimeout(r, waitMin));
   btn.classList.remove('is-busy'); btn.disabled = false;
-  if (ok) {
-    btn.classList.add('is-done'); txt.textContent = '已刷新';
-    const sec = state.stamp ? Math.max(0, Math.round((Date.now() - state.stamp) / 1000)) : 0;
-    toast('已取到最新数据（数据 ' + (sec < 60 ? sec + ' 秒前' : Math.round(sec / 60) + ' 分钟前') + '）');
-    setTimeout(() => { btn.classList.remove('is-done'); txt.textContent = '刷新'; }, 1600);
-  } else {
+
+  if (!ok) {
     txt.textContent = '刷新失败'; toast('刷新失败，请检查网络');
     setTimeout(() => { txt.textContent = '刷新'; }, 1800);
+    return;
   }
+  btn.classList.add('is-done'); txt.textContent = '已刷新';
+  const sec = state.stamp ? Math.max(0, Math.round((Date.now() - state.stamp) / 1000)) : 0;
+  const age = sec < 60 ? sec + ' 秒前' : Math.round(sec / 60) + ' 分钟前';
+  if (fresh) toast('已重新探测：数据更新于' + age);
+  else if (asked) toast('已请求实时探测，当前数据' + age + '（探测还在路上，稍后自动刷新）');
+  else toast('已取到最新数据（' + age + '）');
+  setTimeout(() => { btn.classList.remove('is-done'); txt.textContent = '刷新'; }, 1600);
 };
 
 $('grid').addEventListener('click', async (ev) => {
