@@ -299,7 +299,7 @@ function pushPoint(s, ts, online, ok) {
 }
 
 /** 把分钟桶合并成 48 段（每段 30 分钟）→ [[ts, 峰值, 可用率 0..1 或 null]] */
-function historyBuckets(s, count = 48, spanMs = 30 * 60000) {
+function historyBuckets(s, count = 48, spanMs = 15 * 60000) {   // 48 格 × 15 分钟 = 12 小时（业主 2026-11-28）
   const pts = Array.isArray(s.history24h) ? s.history24h : [];
   const now = Date.now();
   const start = Math.floor(now / spanMs) * spanMs - (count - 1) * spanMs;
@@ -320,6 +320,14 @@ function historyBuckets(s, count = 48, spanMs = 30 * 60000) {
 }
 
 /** 24h 可用率（按分钟桶的 ok/total 算，比按点算准） */
+function uptime12h(s) {
+  const pts = Array.isArray(s.history24h) ? s.history24h : [];
+  const cut = Date.now() - 12 * 3600_000;
+  let ok = 0, total = 0;
+  for (const p of pts) { if (p[0] < cut) continue; total += p[3] || 0; ok += p[2] || 0; }
+  return total ? Math.round((ok / total) * 1000) / 10 : null;
+}
+
 function uptimeFromHistory(s) {
   const pts = Array.isArray(s.history24h) ? s.history24h : [];
   const now = Date.now();
@@ -777,6 +785,7 @@ function serversPayload(all = false) {
         source: s.source || null,
         checkedAt: s.checkedAt,
         uptime24h: s.uptime24h,
+    uptime12h: uptime12h(s),
         uptime7d: s.uptime7d,
         history24h: historyBuckets(s),
         rating: ratingOf(srv.id),

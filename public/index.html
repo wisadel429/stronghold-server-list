@@ -653,7 +653,7 @@ function barsHtml(points, label) {
       : Math.round(ratio * 100) + '% 可用' + (peak != null ? ' · 峰值 ' + peak + ' 人' : ''));
     return '<i class="' + cls + '" title="' + esc(tip) + '"></i>';
   }).join('');
-  return '<div class="rl-bars" role="img" aria-label="' + esc(label || '最近 24 小时在线情况') + '">' + html + '</div>';
+  return '<div class="rl-bars" role="img" aria-label="' + esc(label || '最近 12 小时在线情况') + '">' + html + '</div>';
 }
 
 function sparkline(points) {
@@ -727,7 +727,8 @@ function render() {
     const code = 'SRV-' + String(idx).padStart(3, '0');
     const my = myVote(s.id);
     const rt = s.rating || { large: 0, medium: 0 };
-    const up = s.uptime24h == null ? '—' : s.uptime24h.toFixed(1) + '%';
+    const upSrc = s.uptime12h != null ? s.uptime12h : s.uptime24h;
+    const up = upSrc == null ? '—' : Number(upSrc).toFixed(1) + '%';
     return '<article class="rl-row ' + (on ? 'is-online' : 'is-offline') + '" data-id="' + esc(s.id) + '">' +
       '<div class="rl-tile"><small>NODE</small><b>' + num + '</b><em>' + code + '</em></div>' +
       '<div class="rl-main">' +
@@ -752,9 +753,9 @@ function render() {
         '</div>' +
       '</div>' +
       '<div class="rl-side">' +
-        '<div class="rl-hhead"><span>24 小时在线情况（本站探测）</span><b>' + up + '</b></div>' +
-        barsHtml(s.history24h, s.title + ' 最近 24 小时') +
-        '<div class="rl-hlabels"><span>24 小时前</span><span>12 小时前</span><span>现在</span></div>' +
+        '<div class="rl-hhead"><span>12 小时在线情况（本站探测）</span><b>' + up + '</b></div>' +
+        barsHtml(s.history24h, s.title + ' 最近 12 小时') +
+        '<div class="rl-hlabels"><span>12 小时前</span><span>6 小时前</span><span>现在</span></div>' +
         '<div class="rl-vote">' +
           '<button type="button" data-vote="large" data-id="' + esc(s.id) + '"' + (my === 'large' ? ' class="is-voted"' : '') + '><span>超大杯</span> <b>' + (rt.large || 0) + '</b></button>' +
           '<button type="button" data-vote="medium" data-id="' + esc(s.id) + '"' + (my === 'medium' ? ' class="is-voted"' : '') + '><span>中杯</span> <b>' + (rt.medium || 0) + '</b></button>' +
@@ -803,14 +804,14 @@ function openDetail(id) {
     ['版本', st.version || '—'], ['入口', s.url],
     ['在线 / 房间 / 对局', [st.online ?? '—', st.rooms ?? '—', st.matches ?? '—'].join(' / ')],
     ['延迟', st.latencyMs ? st.latencyMs + ' ms' : '—'],
-    ['24h / 7d 可用率', (s.uptime24h == null ? '—' : s.uptime24h.toFixed(1) + '%') + ' / ' + (s.uptime7d == null ? '—' : s.uptime7d.toFixed(1) + '%')],
+    ['12h / 24h / 7d 可用率', (s.uptime12h == null ? '—' : s.uptime12h.toFixed(1) + '%') + ' / ' + (s.uptime24h == null ? '—' : s.uptime24h.toFixed(1) + '%') + ' / ' + (s.uptime7d == null ? '—' : s.uptime7d.toFixed(1) + '%')],
     ['探测源 / 失败原因', (s.source || '—') + (s.error ? ' · ' + s.error : '')],
   ];
   $('dlgKv').innerHTML = rows.map(([k, v]) => '<div><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>').join('');
   const notes = $('dlgNotes');
   notes.hidden = !s.notes;
   notes.textContent = s.notes || '';
-  $('dlgBars').innerHTML = barsHtml(s.history24h, s.title + ' 最近 24 小时') + sparkline(s.history24h);
+  $('dlgBars').innerHTML = barsHtml(s.history24h, s.title + ' 最近 12 小时') + sparkline(s.history24h);
   $('dlgCopy').onclick = async () => { toast(await copyText(s.url) ? '网址已复制' : '复制失败'); };
   const go = $('dlgGo');
   go.href = s.url;
