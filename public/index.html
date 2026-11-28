@@ -590,7 +590,8 @@ function buildSats() {
     sat.style.setProperty('--x', x + '%');
     sat.style.setProperty('--y', y + '%');
     sat.style.setProperty('--k', i);
-    sat.setAttribute('aria-label', '跳到 ' + s.title + (on ? '（在线）' : '（离线）'));
+    sat.setAttribute('aria-label', '跳到 ' + s.title +
+      ((s.status || {}).state === 'closed' ? '（已关闭）' : (on ? '（在线）' : '（离线）')));
     const inner = document.createElement('span');
     inner.className = 'rl-sat-in';
     const num = document.createElement('strong');
@@ -713,6 +714,9 @@ function render() {
   grid.innerHTML = list.map((s) => {
     const st = s.status || {};
     const on = st.state === 'online';
+    // 关服（后台「关闭服务器」）：进程还在但不接人 —— 按失败处理，红色 + 沉底
+    const closed = st.state === 'closed';
+    const stateText = closed ? '已关闭' : (on ? '在线' : '离线');
     const idx = state.items.indexOf(s) + 1;
     const num = String(idx).padStart(2, '0');
     const code = 'SRV-' + String(idx).padStart(3, '0');
@@ -724,8 +728,8 @@ function render() {
       '<div class="rl-main">' +
         '<div class="rl-title"><span class="rl-dot"></span><h2>' + esc(s.title) + '</h2>' +
           (st.version ? '<span class="rl-ver">v' + esc(String(st.version).replace(/^v/i, '')) + '</span>' : '') +
-          '<span class="rl-tag ' + (on ? 'on' : 'off') + '">' + (on ? '在线' : '离线') + '</span>' +
-          (!on && s.error ? '<span class="rl-tag err">' + esc(s.error) + '</span>' : '') +
+          '<span class="rl-tag ' + (on ? 'on' : 'off') + '"' + (closed ? ' title="服务器已关闭（进程在跑，但不接受连接）"' : '') + '>' + stateText + '</span>' +
+          (!on && !closed && s.error ? '<span class="rl-tag err">' + esc(s.error) + '</span>' : '') +
         '</div>' +
         '<p class="rl-meta">' + esc([s.region, s.maintainer].filter(Boolean).join(' · ')) + '</p>' +
         ((s.tags && s.tags.length) ? '<div class="rl-tags">' + s.tags.map((t) => '<span class="rl-tag2">' + esc(t) + '</span>').join('') + '</div>' : '') +
@@ -787,6 +791,7 @@ function openDetail(id) {
   $('dlgCode').textContent = 'NODE DETAIL · ' + (on ? 'ONLINE' : 'OFFLINE');
   $('dlgTitle').textContent = s.title;
   const rows = [
+    ['状态', st.state === 'closed' ? '已关闭（进程在跑，不接受连接）' : (on ? '在线' : '离线')],
     ['地区', s.region || '—'], ['维护者', s.maintainer || '—'],
     ['版本', st.version || '—'], ['入口', s.url],
     ['在线 / 房间 / 对局', [st.online ?? '—', st.rooms ?? '—', st.matches ?? '—'].join(' / ')],

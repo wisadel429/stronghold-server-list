@@ -229,24 +229,32 @@ function probe(srv) {
 
 /** healthz 的字段在不同版本上不完全一致，逐项兜底 */
 function normalizeHealth(json) {
+  // 关服（后台「关闭服务器」）时进程仍在跑，/healthz 只回 { version, status:'closing' }，
+  // 没有 ok / online 字段 —— 必须单独识别，否则会被当成"在线 0 人"（业主 2026-11-28）
+  const rawState = String(json.status ?? json.state ?? '').trim().toLowerCase();
+  const closed = rawState === 'closing' || rawState === 'closed' || rawState === 'close'
+    || json.closed === true
+    || (json.ok === false && /clos/i.test(String(json.reason || '')));
   const online = Number(json.online ?? json.players ?? json.humans);
   // 注意：很多服的 healthz 里 `version` 是**协议号**（数字 1），游戏版本在 `app` 字段
   const appVer = (typeof json.app === 'string' && json.app)
     ? json.app
     : ((typeof json.version === 'string' && /\d+\.\d+/.test(json.version)) ? json.version : '');
   return {
-    state: json.ok === false ? 'offline' : 'online',
-    online: Number.isFinite(online) ? online : null,
-    rooms: Number.isFinite(Number(json.rooms)) ? Number(json.rooms) : null,
-    matches: Number.isFinite(Number(json.matches)) ? Number(json.matches) : null,
+    state: closed ? 'closed' : (json.ok === false ? 'offline' : 'online'),
+    closed,
+    online: closed ? null : (Number.isFinite(online) ? online : null),
+    rooms: closed ? null : (Number.isFinite(Number(json.rooms)) ? Number(json.rooms) : null),
+    matches: closed ? null : (Number.isFinite(Number(json.matches)) ? Number(json.matches) : null),
     version: String(appVer || ''),
     build: String(json.build || ''),
-    sockets: Number.isFinite(Number(json.sockets)) ? Number(json.sockets) : null,
+    sockets: closed ? null : (Number.isFinite(Number(json.sockets)) ? Number(json.sockets) : null),
   };
 }
 
-function pushPoint(s, ts, online) {
-  s.history24h.push([ts, online]);
+function pushPoint(s, ts, online, ok) {
+  if (!Array.isArray(s.history24h)) s.history24h = [];
+  s.history24h.push([ts, online, ok ? 1 : 0]);
   const cut = ts - 24 * 3600_000;
   while (s.history24h.length && s.history24h[0][0] < cut) s.history24h.shift();
   if (s.history24h.length > HISTORY_POINTS) s.history24h = s.history24h.slice(-HISTORY_POINTS);
@@ -254,6 +262,7 @@ function pushPoint(s, ts, online) {
 
 /** 按天累计可用率（保留最近 7 天） */
 function bumpDay(s, ok, ts) {
+  if (!s.days || typeof s.days !== 'object') s.days = {};
   const d = new Date(ts);
   const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const day = s.days[key] || { ok: 0, total: 0 };
@@ -281,10 +290,11 @@ function applyOutcome(srv, outcome, now) {
   } else {
     s.status = { state: 'unreachable', online: null, latencyMs: null };
   }
-  // 只按"在线/离线"记点，人数单独存，避免走势被空值打断
-  const online = outcome.ok ? (s.status.online == null ? 0 : s.status.online) : null;
-  pushPoint(s, now, online);
-  bumpDay(s, outcome.ok, now);
+  // 只有"在线且在开服"才算可用；关服（closed）按不可用记，走势与可用率都算失败
+  const usable = outcome.ok && s.status.state === 'online';
+  const online = usable ? (s.status.online == null ? 0 : s.status.online) : null;
+  pushPoint(s, now, online, usable);
+  bumpDay(s, usable, now);
   const okPoints = s.history24h.filter((p) => p[1] != null).length;
   s.uptime24h = s.history24h.length ? Math.round((okPoints / s.history24h.length) * 1000) / 10 : null;
   return s;
@@ -441,7 +451,9 @@ async function handleAdmin(req, res, url) {
 
   if (!authed(req)) return json(res, 401, { error: '未登录' });
 
-  if (url.pathname === '/admin/api/list') return json(res, 200, serversPayload(true));
+  if (url.pathname === '/admin/api/list') return json(res, 200, Object.assign(serversPayload(true), { stats: statsPayload() }));
+
+  if (url.pathname === '/admin/api/stats') return json(res, 200, statsPayload());
 
   // 自更新（业主 2026-11-22：以后改代码不用再手工 git pull）
   if (url.pathname === '/admin/api/deploy' && req.method === 'POST') {
@@ -570,6 +582,88 @@ async function handleVote(req, res) {
   return json(res, 200, { ok: true, changed: !!prev, myKind: kind, ...ratingOf(id) });
 }
 
+// ---------------------------------------------------------------- 访问量 / 抓取量（业主 2026-11-28）
+
+const STATS_FILE = path.join(DATA_DIR, 'stats.json');
+/** { days: { '2026-11-28': { page, uv, api, report } }, total: { page, uv, api, report } } */
+let stats = { days: {}, total: { page: 0, uv: 0, api: 0, report: 0 } };
+const uvSeen = new Map();        // day -> Set(ip)，只存内存（重启丢，够用）
+let statsTimer = null;
+
+function dayKeyOf(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function loadStats() {
+  try {
+    const doc = JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'));
+    if (doc && typeof doc === 'object') {
+      stats = { days: doc.days || {}, total: Object.assign({ page: 0, uv: 0, api: 0, report: 0 }, doc.total || {}) };
+    }
+  } catch { /* 首次运行没有文件 */ }
+}
+
+function saveStats() {
+  if (statsTimer) return;
+  statsTimer = setTimeout(() => {
+    statsTimer = null;
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      const tmp = `${STATS_FILE}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(stats), 'utf8');
+      fs.renameSync(tmp, STATS_FILE);
+    } catch (e) { log('统计写盘失败', e.message); }
+  }, 5000);
+}
+
+/** kind: page（页面访问）/ api（抓取 /api/servers）/ report（国内上报） */
+function bumpStat(kind, ip) {
+  const day = dayKeyOf(Date.now());
+  const d = stats.days[day] || (stats.days[day] = { page: 0, uv: 0, api: 0, report: 0 });
+  d[kind] = (Number(d[kind]) || 0) + 1;
+  stats.total[kind] = (Number(stats.total[kind]) || 0) + 1;
+  if (kind === 'page' && ip) {
+    let set = uvSeen.get(day);
+    if (!set) uvSeen.set(day, (set = new Set()));
+    if (!set.has(ip)) {
+      set.add(ip);
+      d.uv = set.size;
+      if (day === dayKeyOf(Date.now())) stats.total.uv = (Number(stats.total.uv) || 0) + 1;
+    }
+  }
+  const keys = Object.keys(stats.days).sort();
+  while (keys.length > 60) delete stats.days[keys.shift()];
+  saveStats();
+}
+
+function sumDays(keys) {
+  const out = { page: 0, uv: 0, api: 0, report: 0 };
+  for (const k of keys) {
+    const d = stats.days[k];
+    if (!d) continue;
+    out.page += Number(d.page) || 0;
+    out.uv += Number(d.uv) || 0;
+    out.api += Number(d.api) || 0;
+    out.report += Number(d.report) || 0;
+  }
+  return out;
+}
+
+function statsPayload() {
+  const today = dayKeyOf(Date.now());
+  const yest = dayKeyOf(Date.now() - 86400_000);
+  const last7 = [];
+  for (let i = 0; i < 7; i++) last7.push(dayKeyOf(Date.now() - i * 86400_000));
+  return {
+    today: Object.assign({ page: 0, uv: 0, api: 0, report: 0 }, stats.days[today] || {}),
+    yesterday: Object.assign({ page: 0, uv: 0, api: 0, report: 0 }, stats.days[yest] || {}),
+    week: sumDays(last7),
+    total: stats.total,
+    days: Object.keys(stats.days).sort().slice(-14).map((k) => Object.assign({ day: k }, stats.days[k])),
+  };
+}
+
 // ---------------------------------------------------------------- HTTP
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.webp': 'image/webp', '.woff2': 'font/woff2' };
@@ -619,12 +713,20 @@ function serversPayload(all = false) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || '/', 'http://x');
-  if (url.pathname === '/api/servers') return json(res, 200, serversPayload());
+  const ip = String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '')
+    .split(',')[0].trim();
+  if (url.pathname === '/api/servers') {
+    bumpStat('api', ip);
+    res.setHeader('access-control-allow-origin', '*');
+    return json(res, 200, serversPayload());
+  }
   if (url.pathname === '/healthz') {
     return json(res, 200, { ok: true, service: 'stronghold-server-list', servers: config.servers.length, at: Date.now() });
   }
+  if (url.pathname === '/' || url.pathname === '/index.html') bumpStat('page', ip);
   if (url.pathname === '/admin') return serveStatic(res, '/admin.html');
   if (url.pathname === '/api/report' && req.method === 'POST') {
+    bumpStat('report', ip);
     return handleReport(req, res).catch((e) => json(res, 400, { error: e.message }));
   }
   if (url.pathname === '/api/vote' && req.method === 'POST') {
@@ -641,6 +743,7 @@ const server = http.createServer((req, res) => {
 loadConfig();
 loadState();
 loadVotes();
+loadStats();
 server.listen(PORT, HOST, () => {
   log(`列表站已启动 http://${HOST}:${PORT}（轮询 ${config.servers.length} 个服 / ${POLL_MS}ms）`);
   log(`管理页 /admin${ADMIN_RANDOM ? ' · 本次随机口令：' + ADMIN_PASSWORD + '（建议设置 ADMIN_PASSWORD 固定下来）' : ' · 口令来自 ADMIN_PASSWORD'}`);

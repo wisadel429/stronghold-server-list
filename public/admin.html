@@ -148,11 +148,23 @@ body{background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans);
 .rl-password[open] summary::before{content:"－ "}
 .rl-password form{padding:0 16px 16px}
 
-.rl-footer{margin-top:26px;padding-top:12px;border-top:1px solid var(--line2);
-  display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--mute)}
+/* 访问与抓取（后台最底部） */
+.rl-traffic{margin-top:30px;padding-top:16px;border-top:2px solid var(--ink)}
+.rl-traffic-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:12px}
+.rl-traffic-head h2{margin:6px 0 0;font-size:22px;font-weight:800}
+.rl-statsgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.scard{border:1px solid var(--line);background:var(--paper2);padding:12px 14px 11px}
+.scard dt{font:9.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+.scard b{display:block;font:900 28px/1.1 var(--code);margin:9px 0 3px;color:var(--ink)}
+.scard small{display:block;font-size:11px;color:var(--mute)}
+.rl-note{margin:12px 0 0;font-size:11px;color:var(--mute);line-height:1.6}
+.rl-note code{font-family:var(--mono);font-size:10.5px;background:var(--tag);padding:1px 4px}
+
+.rl-footer{margin-top:26px;padding-top:12px;border-top:1px solid var(--line2);  display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--mute)}
 
 @media (max-width:1100px){
   .rl-admin-grid{grid-template-columns:minmax(0,1fr)}
+  .rl-statsgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .rl-editor{position:static;order:-1}
 }
 @media (max-width:700px){
@@ -285,6 +297,15 @@ body{background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans);
           </form>
         </section>
       </div>
+
+      <section class="rl-traffic">
+        <div class="rl-traffic-head">
+          <div><span class="rl-code">03 / TRAFFIC</span><h2>访问与抓取</h2></div>
+          <button id="statsReload" class="rl-btn" type="button">刷新</button>
+        </div>
+        <div id="statsGrid" class="rl-statsgrid"><p class="rl-muted">读取中…</p></div>
+        <p class="rl-note">页面访问 = 打开总览页的次数（独立访客按 IP 去重）；抓取 = <code>/api/servers</code> 请求数（国内上报器每 30 秒一次 + 浏览器轮询）；上报 = <code>/api/report</code> 次数。数据存 <code>data/stats.json</code>，按天保留 60 天。</p>
+      </section>
     </section>
   </main>
 
@@ -365,6 +386,30 @@ async function load() {
   showDash();
   msg('已载入 ' + items.length + ' 条 · 在线 ' + items.filter((s) => (s.status || {}).state === 'online').length);
   loadThanks();
+  if (j.stats) paintStats(j.stats); else loadStats().catch(() => {});
+}
+
+/* ── 访问量与抓取量（后台最底部）── */
+function statCard(label, value, sub) {
+  return '<div class="scard"><dt>' + label + '</dt><b>' + value + '</b><small>' + sub + '</small></div>';
+}
+function paintStats(s) {
+  const box = document.getElementById('statsGrid');
+  if (!box) return;
+  const n = (v) => Number(v || 0).toLocaleString('zh-CN');
+  box.innerHTML = [
+    statCard('今日访问', n(s.today.page), 'PV · 独立 ' + n(s.today.uv) + ' 人'),
+    statCard('今日抓取', n(s.today.api), '近 7 天 ' + n(s.week.api)),
+    statCard('今日上报', n(s.today.report), '近 7 天 ' + n(s.week.report)),
+    statCard('累计访问', n(s.total.page), '累计抓取 ' + n(s.total.api)),
+  ].join('');
+}
+async function loadStats() {
+  try { paintStats(await api('/admin/api/stats')); }
+  catch (e) {
+    const box = document.getElementById('statsGrid');
+    if (box) box.innerHTML = '<p class="rl-muted">读取失败：' + esc(e.message) + '</p>';
+  }
 }
 
 // ---- 感谢名单（业主 2026-11-22：后台在线编辑，不用改文件再部署）----
@@ -437,6 +482,7 @@ $('#login-form').addEventListener('submit', async (ev) => {
 $('#add').onclick = () => { fillForm(null); $('#editor-form').title.focus(); };
 $('#reset').onclick = () => { fillForm(null); msg('已清空表单'); };
 $('#refresh').onclick = () => load().catch((e) => msg(e.message, true));
+$('#statsReload').onclick = () => loadStats().catch((e) => msg(e.message, true));
 // 真正的登出：让服务端销毁会话、清 cookie，再回到登录页
 $('#logout').onclick = async () => {
   try { await fetch('/admin/logout', { method: 'POST' }); } catch { /* 网络失败也照样刷新 */ }
